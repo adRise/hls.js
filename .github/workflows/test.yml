@@ -1,0 +1,171 @@
+name: Packages Test
+
+# recently we only support hls.js
+on:
+  push:
+    branches:
+      - 'master'
+      - 'hls.js-next'
+    paths:
+      - 'packages/hls.js/**'
+  pull_request:
+    paths:
+        - 'packages/hls.js/**'
+
+jobs:
+  init-test-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js Version in .nvmrc
+        uses: actions/setup-node@v3
+        with:
+          always-auth: true
+          node-version-file: '.nvmrc'
+          registry-url: https://npm.pkg.github.com/
+          scope: '@adrise'
+
+      - name: Cache node_modules
+        id: dependencies
+        uses: actions/cache@v2
+        with:
+          path: './packages/hls.js/node_modules'
+          key: ${{ runner.os }}-node-modules-self-hosted-runner-${{ hashFiles('./packages/hls.js/package-lock.json') }}
+
+      - run: cd packages/hls.js && npm ci
+
+  lint:
+    if: ${{ github.event_name == 'pull_request' }}
+    needs: init-test-environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js Version in .nvmrc
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Download node_modules folder
+        id: dependencies
+        uses: actions/cache@v2
+        with:
+          path: './packages/hls.js/node_modules'
+          key: ${{ runner.os }}-node-modules-self-hosted-runner-${{ hashFiles('./packages/hls.js/package-lock.json') }}
+
+      - name: Download eslint cache
+        id: eslint-cache
+        uses: actions/cache@v2
+        with:
+          path: ~/.cache/.eslintcache
+          key: eslint-cache
+
+      - run: cd packages/hls.js && npm run lint
+
+  type-check:
+    if: ${{ github.event_name == 'pull_request' }}
+    needs: init-test-environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js Version in .nvmrc
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Download node_modules folder
+        id: dependencies
+        uses: actions/cache@v2
+        with:
+          path: './packages/hls.js/node_modules'
+          key: ${{ runner.os }}-node-modules-self-hosted-runner-${{ hashFiles('./packages/hls.js/package-lock.json') }}
+
+      - run: cd packages/hls.js && npm run type-check
+
+
+
+  unit-tests:
+    needs: init-test-environment
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js Version in .nvmrc
+        uses: actions/setup-node@v3
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Download node_modules folder
+        id: dependencies
+        uses: actions/cache@v2
+        with:
+          path: './packages/hls.js/node_modules'
+          key: ${{ runner.os }}-node-modules-self-hosted-runner-${{ hashFiles('./packages/hls.js/package-lock.json') }}
+
+      - name: Run test
+        run: cd packages/hls.js && npm run test:unit
+
+      - name: Upload coverage reports
+        id: coverage-reports-src
+        uses: actions/cache@v2
+        with:
+          path: ./packages/hls.js/coverage/*-final.json
+          key: coverage-reports-src-${{ github.sha }}
+
+  # functional-tests:
+  #   needs: init-test-environment
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     fail-fast: true
+  #     max-parallel: 8
+  #     matrix:
+  #       config: [chrome-win_10]
+
+  #       include:
+  #         - config: chrome-win_10
+  #           ua: chrome
+  #           os: Windows 10
+
+  #   steps:
+  #     - uses: actions/checkout@v2
+
+  #     - name: Use Node.js Version in .nvmrc
+  #       uses: actions/setup-node@v3
+  #       with:
+  #         node-version-file: '.nvmrc'
+
+  #     - name: start SauceConnect tunnel
+  #       uses: saucelabs/sauce-connect-action@5c0cf29805c7fe68f2dec68c6384332fb1ba73f9
+  #       with:
+  #         username: ${{ secrets.SAUCE_USERNAME }}
+  #         accessKey: ${{ secrets.SAUCE_ACCESS_KEY }}
+  #         tunnelIdentifier: ${{ github.run_id }}-${{ matrix.config }}
+  #         retryTimeout: 300
+
+  #     - name: Download node_modules folder
+  #       id: dependencies
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: './packages/hls.js/node_modules'
+  #         key: ${{ runner.os }}-node-modules-self-hosted-runner-${{ hashFiles('./packages/hls.js/package-lock.json') }}
+
+  #     - name: run functional tests
+  #       run: cd packages/hls.js && npm run build && npm run test:func && npm run test:func:light
+  #       env:
+  #         CI: true
+  #         SAUCE_TUNNEL_ID: ${{ github.run_id }}-${{ matrix.config }}
+  #         SAUCE_USERNAME: ${{ secrets.SAUCE_USERNAME }}
+  #         SAUCE_ACCESS_KEY: ${{ secrets.SAUCE_ACCESS_KEY }}
+  #         UA: ${{ matrix.ua }}
+  #         UA_VERSION: ${{ matrix.uaVersion }}
+  #         OS: ${{ matrix.os }}
+
+
+
+
