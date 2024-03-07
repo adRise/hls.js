@@ -1,12 +1,12 @@
 {
-  "name": "@adrise/hls.js",
+  "name": "@adrise/tubi-hls.js",
   "license": "Apache-2.0",
-  "version": "1.5.7-rc.1",
+  "version": "1.5.7-alpha.1",
   "description": "JavaScript HLS client using MediaSourceExtension",
-  "homepage": "https://github.com/adRise/web_ott_npm_private_packages/tree/master/packages/hls.js",
+  "homepage": "https://github.com/adRise/tubi-hls.js",
   "repository": {
     "type": "git",
-    "url": "git@github.com:adRise/web_ott_npm_private_packages.git"
+    "url": "git@github.com:adRise/tubi-hls.js.git"
   },
   "main": "./dist/hls.js",
   "module": "./dist/hls.mjs",

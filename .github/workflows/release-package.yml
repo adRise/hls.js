@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dirName: ['dsbridge', 'hls.js', 'viewport-units-buggyfill', 'anonymous-token']
+        dirName: ['hls.js']
 
     steps:
       - uses: actions/checkout@v2
@@ -25,18 +25,11 @@ jobs:
           scope: '@adrise'
 
       - run: npm set-script prepare ""
-        if: ${{ matrix.dirName == 'hls.js' }} # currently only hls.js has the husky config
-        working-directory: packages/${{ matrix.dirName }}
 
       - run: npm install ci --legacy-peer-deps
-        if: ${{ matrix.dirName == 'hls.js' || matrix.dirName == 'anonymous-token' }} # currently only hls.js and anonymous-token migrated the build command
-        working-directory: packages/${{ matrix.dirName }}
 
       - run: npm run build
-        if: ${{ matrix.dirName == 'hls.js' || matrix.dirName == 'anonymous-token' }} # currently only hls.js and anonymous-token migrated the build command
-        working-directory: packages/${{ matrix.dirName }}
 
       - run: npm publish
-        working-directory: packages/${{ matrix.dirName }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
