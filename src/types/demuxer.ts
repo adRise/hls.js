@@ -84,6 +84,17 @@ export interface DemuxedVideoTrack extends DemuxedVideoTrackBase {
   samples: VideoSample[];
 }
 
+export interface DemuxedHevcTrack extends DemuxedVideoTrack {
+  vps_nals: Uint8Array[];
+  sps_nals: Uint8Array[];
+  pps_nals: Uint8Array[];
+  sei_nals: Uint8Array[];
+
+  vps_list: HevcVPS[];
+  sps_list: HevcSPS[];
+  pps_list: HevcPPS[];
+}
+
 export interface DemuxedMetadataTrack extends DemuxedTrack {
   samples: MetadataSample[];
 }
@@ -153,3 +164,50 @@ export interface KeyData {
   key: Uint8Array;
   iv: Uint8Array;
 }
+
+export interface HevcVPS {
+  video_parameter_set_id: number;
+  max_layers_minus1: number;
+  max_sub_layers_minus1: number;
+  temporal_id_nesting_flag: number;
+  ptl: HevcPTL
+}
+
+export interface HevcSPS {
+  width: number;
+  height: number;
+  pixelRatio: [number, number];
+  chroma_format: number;
+  bit_depth_luma_minus8: number;
+  bit_depth_chroma_minus8: number;
+  max_sub_layers_minus1: number;
+  ptl: HevcPTL;
+  vui: HevcVUI;
+}
+
+export interface HevcPPS {
+  entropy_coding_sync_enabled_flag: number;
+  tiles_enabled_flag: number;
+}
+
+export interface HevcVUI {
+  sar_width: number;
+  sar_height: number;
+  min_spatial_segmentation_idc: number;
+  nal_hrd_parameters_present_flag: number;
+  vcl_hrd_parameters_present_flag: number;
+  sub_pic_hrd_params_present_flag: number;
+}
+
+export interface HevcPTL {
+  profile_space: number;
+  tier_flag: number;
+  profile_idc: number;
+  profile_compatibility_flags: number;
+  constraint_indicator_flags_high_16: number;
+  constraint_indicator_flags_low_32: number;
+  level_idc: number;
+}
+
+
+

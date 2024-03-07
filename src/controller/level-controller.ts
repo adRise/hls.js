@@ -528,6 +528,7 @@ export default class LevelController extends BasePlaylistController {
     ) {
       this.checkRetry(data);
     }
+
   }
 
   // reset errors on the successful load of a fragment

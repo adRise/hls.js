@@ -1,5 +1,6 @@
 import { Fragment } from '../../src/loader/fragment';
 import { PlaylistLevelType } from '../../src/types/loader';
+import { ChunkMetadata } from '../../src/types/transmuxer';
 
 function fragment(options) {
   const frag = new Fragment(PlaylistLevelType.MAIN, '');
@@ -49,4 +50,113 @@ export const mockFragments = [
     sn: 4,
     cc: 1,
   }),
+];
+
+export const mockBufferAppendingData = {
+  type: 'video',
+  frag: fragment({
+    programDateTime: 1505502661523,
+    level: 2,
+    duration: 5.0,
+    start: 0,
+    sn: 0,
+    cc: 0,
+  }),
+  part: null,
+  chunkMeta: new ChunkMetadata(0, 0, 0, 0),
+  parent: PlaylistLevelType.MAIN,
+  data: new Uint8Array(),
+  timestampOffset: 0,
+  isInitSegment: false,
+  isEndSegment: false,
+  adIndex: 0,
+  skipDeviatedCheck: false,
+};
+
+
+export const mockInitVideoFragment = {
+  type: 'video',
+  frag: fragment({
+    programDateTime: 1505502661523,
+    level: 2,
+    duration: 5.0,
+    start: 0,
+    sn: 0,
+    cc: 0,
+  }),
+  part: null,
+  parent: PlaylistLevelType.MAIN,
+  data: new Uint8Array(),
+  timestampOffset: 0,
+  isInitSegment: true,
+  isEndSegment: false,
+  sn: 'init',
+  stats: {
+    buffering: {
+      start: 0,
+      end: 3,
+      first: 0,
+    }
+  }
+};
+
+export const mockInitAudioFragment = {
+  type: 'audio',
+  frag: fragment({
+    programDateTime: 1505502661523,
+    level: 2,
+    duration: 5.0,
+    start: 0,
+    sn: 0,
+    cc: 0,
+  }),
+  part: null,
+  parent: PlaylistLevelType.MAIN,
+  data: new Uint8Array(),
+  timestampOffset: 0,
+  isInitSegment: true,
+  isEndSegment: false,
+  sn: 'init',
+  stats: {
+    buffering: {
+      start: 0,
+      end: 3,
+      first: 0,
+    }
+  }
+};
+
+
+export const mockSegmentCachesWithAllData = [
+  {
+    type: 'video',
+    frag: {
+      startDTS: 5,
+      endDTS: 10,
+      sn: 2,
+      initSegment: mockInitVideoFragment,
+      stats: {
+        buffering: {
+          start: 5,
+          end: 10,
+          first: 0,
+        }
+      }
+    }
+  },{
+    type: 'audio',
+    frag: {
+      startDTS: 5,
+      endDTS: 10,
+      sn: 2,
+      initSegment: mockInitVideoFragment,
+      stats: {
+        buffering: {
+          start: 5,
+          end: 10,
+          first: 0,
+        }
+      }
+    }
+  }
 ];

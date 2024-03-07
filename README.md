@@ -7,6 +7,92 @@
 [comment]: <> ([![Sauce Test Status]&#40;https://saucelabs.com/browser-matrix/robwalch.svg&#41;]&#40;https://saucelabs.com/u/robwalch&#41;)
 
 # ![HLS.js](https://raw.githubusercontent.com/video-dev/hls.js/master/docs/logo.svg)
+# Development
+
+We are upgrading the hls.js in our app. So there will be a long time that we need to maintain two versions of the hls.js.
+
+# Package Version
+
+We will use [hls.js version]-rc.X for release on the `master` branch, such as 1.1.5-rc.1
+
+You can create a new npm version on your branch if you need to deploy it to the npm for debugging. We will follow the same convention, such as 1.1.5-alpha.1
+
+# How to sync with the community
+
+This section describes how to sync with the latest version from the community. You don't need to read this part in your daily job.
+
+## Relationship between the hls.js and our repo
+
+In this repo, the hls.js code is under a subfolder. Our directory structure is like this.
+
+```
+|--packages
+    |-- hls.js
+          |-- src
+    |-- Others
+```
+
+It's pretty hard to compare a repo with a subfolder in another repo. To make this easier, I create a [subtree](https://www.atlassian.com/git/tutorials/git-subtree) on the hls.js folder. Git subtree allows us to nest a repo in other repositors.
+
+![image](https://user-images.githubusercontent.com/2577157/137839851-3db18e1f-c1a0-4ba2-b927-e00fb9430b6c.png)
+
+I extract our hls.js code change with this subtree in a single branch called `hls.js-subtree`. We can compare it with the hls.js master. Here is the structure between our repo and the hls.js.
+
+![image](https://user-images.githubusercontent.com/2577157/137840548-782a4979-af29-4a56-8055-7b9855b07297.png)
+
+As you can see, the `hls.js-subtree` is the bridge between our private repo and the official hls.js.
+
+## How to sync with the hls.js
+
+To sync with the hls.js, you need to get familiar with the git command. Here are some valuable documents.
+
+* [Git Subtree Documents](https://www.atlassian.com/git/tutorials/git-subtree)
+* [Git pulling a branch from another repository?](https://stackoverflow.com/questions/14383212/git-pulling-a-branch-from-another-repository)
+
+### How to catch up with the hls.js
+
+There will be three steps.
+
+#### 1. Git pull the master branch from the hls.js
+
+```
+git remote add hls.js https://github.com/video-dev/hls.js.git
+git fetch hls.js
+git checkout hls.js/master
+```
+
+And then you can check your diff with the remote branch. You can try `git pull`, `git status`, etc.
+
+![image](https://user-images.githubusercontent.com/2577157/137843154-838c3c55-f3ed-46f4-afde-1c5867216b94.png)
+
+Run `git pull` to update it.
+
+#### 2. Merge it with subtree branch
+
+To make the sync easier to track, let's create a new branch like this `chore/sync-hls-[latest commit]`, for example, `chore/sync-hls.js-90c0ee189e44c2287fe838e91617e0c25ca0cc1e`.
+
+And then you can push it and merge to the hls.js subtree just like we usually do. https://github.com/adRise/web_ott_npm_private_packages/pull/16.
+
+#### 3. Pull the latest change from the subtree
+
+When you merge the PR, you have the latest code on the subtree. Now we only need to pull the change from the subtree to our branch.
+
+```
+git subtree pull --prefix=packages/hls.js/ https://github.com/adRise/web_ott_npm_private_packages.git hls.js-subtree
+```
+
+And then you can create a new branch to insert a new version. You need to follow the release guide here https://github.com/adRise/web_ott_npm_private_packages#upgrade-package-version
+
+### How to push our change to the hls.js-subtree
+
+When we sync with the latest hls.js from the community, we also need to push our change to the hls.js-subtree for comparison. You need to run this command to sync your change to the hls.js-subtree.
+
+```
+git subtree push --prefix=packages/hls.js/ https://github.com/adRise/web_ott_npm_private_packages.git hls.js-subtree
+```
+
+# ![hls.js](https://cloud.githubusercontent.com/assets/616833/19739063/e10be95a-9bb9-11e6-8100-2896f8500138.png)
+# ![HLS.js](./docs/logo.svg)
 
 HLS.js is a JavaScript library that implements an [HTTP Live Streaming] client.
 It relies on [HTML5 video][] and [MediaSource Extensions][] for playback.

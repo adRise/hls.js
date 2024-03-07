@@ -83,6 +83,10 @@ export type DRMSystemOptions = {
   distinctiveIdentifier?: MediaKeysRequirement;
   sessionTypes?: string[];
   sessionType?: string;
+  utfEncodingType?: 'utf-8';
+  initDataTypes?: string[];
+  label?: string;
+  serverCertificateUrl?: string;
 };
 
 export type DRMSystemConfiguration = {
@@ -120,6 +124,8 @@ export type EMEControllerConfig = {
   emeEnabled: boolean;
   widevineLicenseUrl?: string;
   drmSystems: DRMSystemsConfiguration;
+  forceFilterDrmKeySystemWithConfig: boolean;
+  playreadyLicenseUrl?: string;
   drmSystemOptions: DRMSystemOptions;
   requestMediaKeySystemAccessFunc: MediaKeyFunc | null;
 };
@@ -136,11 +142,13 @@ export type FragmentLoaderConfig = {
   fragLoadingMaxRetry: number;
   fragLoadingRetryDelay: number;
   fragLoadingMaxRetryTimeout: number;
+  fragLoadingMinChunkSize: number;
 };
 
 export type FPSControllerConfig = {
   capLevelOnFPSDrop: boolean;
   fpsDroppedMonitoringPeriod: number;
+  fpsDroppedMonitoringFramesRequire: number;
   fpsDroppedMonitoringThreshold: number;
 };
 
@@ -214,6 +222,7 @@ export type StreamControllerConfig = {
   maxBufferLength: number;
   maxBufferSize: number;
   maxBufferHole: number;
+  stallMinimumDurationMS?: number;
   highBufferWatchdogPeriod: number;
   nudgeOffset: number;
   nudgeMaxRetry: number;
@@ -301,7 +310,15 @@ export type HlsConfig = {
   errorController: typeof ErrorController;
   fpsController: typeof FPSController;
   progressive: boolean;
+  progressiveAppendMp4: boolean;
+  progressiveStartedUpSeekingEnable: boolean;
+  progressiveFastSpeedEnable: boolean;
+  progressiveLoader: { new (confg: HlsConfig): Loader<LoaderContext> };
+  progressiveUseDetachedLoader: boolean;
+  progressiveFastSpeedFactor: number;
   lowLatencyMode: boolean;
+  // the duration for revert the segments from cache and value `-1` means use all from cache
+  revertSegmentsCacheDuration: number;
 } & ABRControllerConfig &
   BufferControllerConfig &
   CapLevelControllerConfig &
@@ -366,9 +383,11 @@ export const hlsDefaultConfig: HlsConfig = {
   workerPath: null, // used by transmuxer
   enableSoftwareAES: true, // used by decrypter
   startLevel: undefined, // used by level-controller
+  fragLoadingMinChunkSize: Math.pow(2, 17), // used by fragment-loader, default value 128kb
   startFragPrefetch: false, // used by stream-controller
   fpsDroppedMonitoringPeriod: 5000, // used by fps-controller
   fpsDroppedMonitoringThreshold: 0.2, // used by fps-controller
+  fpsDroppedMonitoringFramesRequire: 150, // used by fps-controller
   appendErrorMaxRetry: 3, // used by buffer-controller
   loader: XhrLoader,
   // loader: FetchLoader,
@@ -401,16 +420,25 @@ export const hlsDefaultConfig: HlsConfig = {
   widevineLicenseUrl: undefined, // used by eme-controller
   drmSystems: {}, // used by eme-controller
   drmSystemOptions: {}, // used by eme-controller
+  forceFilterDrmKeySystemWithConfig: false, // used by eme-controller. Relate thread https://tubi.slack.com/archives/C04BFCQU8/p1692691072786789
   requestMediaKeySystemAccessFunc: __USE_EME_DRM__
     ? requestMediaKeySystemAccess
     : null, // used by eme-controller
+  playreadyLicenseUrl: undefined, // used by eme-controller
   testBandwidth: true,
   progressive: false,
+  progressiveAppendMp4: false,
+  progressiveStartedUpSeekingEnable: false,
+  progressiveFastSpeedEnable: false,
+  progressiveLoader: FetchLoader,
+  progressiveUseDetachedLoader: false,
+  progressiveFastSpeedFactor: 1,
   lowLatencyMode: true,
   cmcd: undefined,
   enableDateRangeMetadataCues: true,
   enableEmsgMetadataCues: true,
   enableID3MetadataCues: true,
+  revertSegmentsCacheDuration: -1, // used by buffer controller
   useMediaCapabilities: __USE_MEDIA_CAPABILITIES__,
 
   certLoadPolicy: {
@@ -532,6 +560,7 @@ export const hlsDefaultConfig: HlsConfig = {
   contentSteeringController: __USE_CONTENT_STEERING__
     ? ContentSteeringController
     : undefined,
+  stallMinimumDurationMS: undefined,
 };
 
 function timelineConfig(): TimelineControllerConfig {
@@ -675,7 +704,9 @@ export function enableStreamingMode(config) {
   } else {
     const canStreamProgressively = fetchSupported();
     if (canStreamProgressively) {
-      config.loader = FetchLoader;
+      if (!config.progressiveUseDetachedLoader) {
+        config.loader = FetchLoader;
+      }
       config.progressive = true;
       config.enableSoftwareAES = true;
       logger.log('[config]: Progressive streaming enabled, using FetchLoader');

@@ -494,9 +494,14 @@ class EMEController implements ComponentAPI {
       const keySystem = keySystemFormatToKeySystemDomain(
         decryptdata.keyFormat as KeySystemFormats,
       );
-      const keySystemsToAttempt = keySystem
-        ? [keySystem]
-        : getKeySystemsForConfig(this.config);
+      let keySystemsToAttempt: KeySystems[] = [];
+      if (this.config.forceFilterDrmKeySystemWithConfig) {
+        keySystemsToAttempt = getKeySystemsForConfig(this.config);
+      } else {
+        keySystemsToAttempt = keySystem
+          ? [keySystem]
+          : getKeySystemsForConfig(this.config);
+      }
       return this.attemptKeySystemAccess(keySystemsToAttempt);
     }
     return mediaKeySessionContext;
@@ -553,6 +558,11 @@ class EMEController implements ComponentAPI {
         this.warn('Failed to parse sinf "encrypted" event message initData');
         return;
       }
+    } else if (this.config.forceFilterDrmKeySystemWithConfig && this.config.drmSystems[KeySystems.PLAYREADY]) {
+      // We need to mock keyId if we prevent hls.js parse key set from playlist
+      // Currently it's only used to handle PLAYREADY
+      keySystemDomain = KeySystems.PLAYREADY;
+      keyId = new Uint8Array([1]);
     } else {
       // Support clear-lead key-session creation (otherwise depend on playlist keys)
       const psshInfo = parsePssh(initData);
@@ -1231,6 +1241,7 @@ class EMEController implements ComponentAPI {
       .then(() => {
         if (keySessionCount) {
           this.log('finished closing key sessions and clearing media keys');
+          this.hls?.trigger(Events.EME_DESTROYED, {});
           mediaKeysList.length = 0;
         }
       })

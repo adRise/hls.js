@@ -9,6 +9,7 @@ import {
 } from '../types/loader';
 import { LoadStats } from '../loader/load-stats';
 import ChunkCache from '../demux/chunk-cache';
+import { logger } from '../utils/logger';
 
 export function fetchSupported() {
   if (
@@ -41,9 +42,11 @@ class FetchLoader implements Loader<LoaderContext> {
   private callbacks: LoaderCallbacks<LoaderContext> | null = null;
   public stats: LoaderStats;
   private loader: Response | null = null;
+  private progressiveAppendMp4: boolean;
 
   constructor(config /* HlsConfig */) {
     this.fetchSetup = config.fetchSetup || getRequest;
+    this.progressiveAppendMp4 = config.progressiveAppendMp4;
     this.controller = new self.AbortController();
     this.stats = new LoadStats();
   }
@@ -245,6 +248,10 @@ class FetchLoader implements Loader<LoaderContext> {
             // Push it to the cache
             chunkCache.push(chunk);
             if (chunkCache.dataLength >= highWaterMark) {
+              if(this.progressiveAppendMp4) {
+                // FIXME: For verifying that progressiveAppendMp4 is in effect.
+                logger.log('[fetch-loader]: onProgress');
+              }
               // flush in order to join the typed arrays
               onProgress(stats, context, chunkCache.flush(), response);
             }

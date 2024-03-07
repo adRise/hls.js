@@ -21,6 +21,7 @@ const sandbox = sinon.createSandbox();
 class MockMediaSource {
   public readyState: string = 'open';
   public duration: number = Infinity;
+  public sourceBuffers = new MockSourceBuffer();
 
   addSourceBuffer(): MockSourceBuffer {
     return new MockSourceBuffer();
@@ -260,10 +261,8 @@ describe('BufferController', function () {
           buffer.appendBuffer,
           'appendBuffer should have been called with the remuxed data',
         ).to.have.been.calledWith(segmentData);
-        expect(
-          triggerSpy,
-          'BUFFER_APPENDED should be triggered upon completion of the operation',
-        ).to.have.been.calledWith(Events.BUFFER_APPENDED, {
+
+        const bufferAppendedData = {
           parent: 'main',
           type: name,
           timeRanges: {
@@ -273,7 +272,11 @@ describe('BufferController', function () {
           frag,
           part: null,
           chunkMeta,
-        });
+        }
+        expect(
+          triggerSpy,
+          'BUFFER_APPENDED should be triggered upon completion of the operation'
+        ).to.have.been.calledWith(Events.BUFFER_APPENDED, bufferAppendedData);
         expect(
           shiftAndExecuteNextSpy,
           'The queue should have been cycled',

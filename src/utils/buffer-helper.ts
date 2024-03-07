@@ -5,7 +5,6 @@
  *
  * Also @see https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/buffered
  */
-
 import { logger } from './logger';
 
 type BufferTimeRange = {
@@ -63,7 +62,11 @@ export class BufferHelper {
         const buffered: BufferTimeRange[] = [];
         let i: number;
         for (i = 0; i < vbuffered.length; i++) {
-          buffered.push({ start: vbuffered.start(i), end: vbuffered.end(i) });
+          const start = vbuffered.start(i);
+          const end = vbuffered.end(i);
+          if (start <= end) {
+            buffered.push({ start, end });
+          }
         }
 
         return this.bufferedInfo(buffered, pos, maxHoleDuration);
@@ -169,5 +172,47 @@ export class BufferHelper {
       logger.log('failed to get media.buffered', e);
       return noopBuffered;
     }
+  }
+
+  /***
+   * monitor the media buffer change
+   * @param media Bufferable
+   * @param onChange a function will be called when buffer has changed
+   * @param onChangeEnd a function will be called when buffer stop change
+   * @param maxDetectTimes interval function will be auto cleared if we have running the limit times
+   */
+  static addBufferChangeListener(media: Bufferable, onChange: (buffers: TimeRanges) => void, onChangeEnd: (buffers: TimeRanges) => void, maxDetectTimes = 1000) {
+    const TICK_INTERVAL = 25;
+    let currentBufferString = '';
+    let intervalId: undefined | number = undefined;
+    let timeCount = 0;
+    const intervalFn = () => {
+      if (timeCount >= maxDetectTimes) {
+        self.clearInterval(intervalId);
+        return;
+      }
+      timeCount += 1;
+      const buffer = BufferHelper.getBuffered(media);
+      let newBufferString = '';
+      for(let i = 0; i < buffer.length; i++ ) {
+        newBufferString += JSON.stringify({
+          start: buffer.start(i),
+          end: buffer.end(i),
+        })
+      }
+      if (!currentBufferString) {
+        currentBufferString = newBufferString;
+        return;
+      }
+      if (currentBufferString !== newBufferString) {
+        onChange(buffer);
+        currentBufferString = newBufferString;
+      } else {
+        self.clearInterval(intervalId);
+        onChangeEnd(buffer);
+      }
+
+    };
+    intervalId = self.setInterval(intervalFn, TICK_INTERVAL);
   }
 }

@@ -131,7 +131,7 @@ describe('TransmuxerInterface tests', function () {
     const duration = 0;
     const accurateTimeOffset = true;
     let chunkMeta = new ChunkMetadata(currentFrag.level, currentFrag.sn + 1, 0);
-    let state = new TransmuxState(false, true, true, false, 0, false);
+    let state = new TransmuxState(false, true, true, false, 0, false, duration);
     transmuxerInterface.push(
       data,
       initSegmentData,
@@ -164,7 +164,7 @@ describe('TransmuxerInterface tests', function () {
     newFrag.start = 1000;
     newFrag.startPTS = 1000;
     chunkMeta = new ChunkMetadata(newFrag.level, newFrag.sn, 0);
-    state = new TransmuxState(false, true, true, false, 1000, false);
+    state = new TransmuxState(false, true, true, false, 1000, false, duration);
     transmuxerInterface.push(
       data,
       initSegmentData,
@@ -245,7 +245,7 @@ describe('TransmuxerInterface tests', function () {
     );
 
     const tConfig = new TransmuxConfig('', '', initSegmentData, 0);
-    const state = new TransmuxState(true, false, true, true, 1000, false);
+    const state = new TransmuxState(true, false, true, true, 1000, false, duration);
     expect(configureStub).to.have.been.calledOnce;
     expect(configureStub).to.have.been.calledWith(tConfig);
 

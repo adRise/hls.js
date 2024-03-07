@@ -37,6 +37,10 @@ import type {
 } from '../types/events';
 
 const TICK_INTERVAL = 100; // how often to tick in ms
+// we don't know how long the video will spend on decode after we append source buffer to MSE.
+// So we try to use timeout to fallback if we spend a lot of time on decoding
+// (mostly it is really fast in 100ms for(60s segment buffer))
+const MAX_DECODE_SOURCE_BUFFER_FROM_CACHE = 300;
 
 export default class StreamController
   extends BaseStreamController
@@ -56,6 +60,7 @@ export default class StreamController
   private backtrackFragment: Fragment | null = null;
   private audioCodecSwitch: boolean = false;
   private videoBuffer: any | null = null;
+  private loadingSegmentsPaused: boolean = false;
 
   constructor(
     hls: Hls,
@@ -92,6 +97,7 @@ export default class StreamController
     hls.on(Events.BUFFER_FLUSHED, this.onBufferFlushed, this);
     hls.on(Events.LEVELS_UPDATED, this.onLevelsUpdated, this);
     hls.on(Events.FRAG_BUFFERED, this.onFragBuffered, this);
+    hls.on(Events.BUFFER_APPENDED, this.onBufferAppended, this);
   }
 
   protected _unregisterListeners() {
@@ -113,6 +119,7 @@ export default class StreamController
     hls.off(Events.BUFFER_FLUSHED, this.onBufferFlushed, this);
     hls.off(Events.LEVELS_UPDATED, this.onLevelsUpdated, this);
     hls.off(Events.FRAG_BUFFERED, this.onFragBuffered, this);
+    hls.off(Events.BUFFER_APPENDED, this.onBufferAppended, this);
   }
 
   protected onHandlerDestroying() {
@@ -361,6 +368,11 @@ export default class StreamController
     level: Level,
     targetBufferTime: number,
   ) {
+    // if loading segments is paued (ex: when seeking), don't load any fragments
+    if (this.loadingSegmentsPaused) {
+      this.warn('load fragment paused due to loaloadingSegmentsPaused is true');
+      return;
+    }
     // Check if fragment is not loaded
     const fragState = this.fragmentTracker.getState(frag);
     this.fragCurrent = frag;
@@ -369,6 +381,7 @@ export default class StreamController
       fragState === FragmentState.PARTIAL
     ) {
       if (frag.sn === 'initSegment') {
+        this.warn('load init segment');
         this._loadInitSegment(frag, level);
       } else if (this.bitrateTest) {
         this.log(
@@ -514,6 +527,10 @@ export default class StreamController
     event: Events.MEDIA_ATTACHED,
     data: MediaAttachedData,
   ) {
+    // I will firstly pause downloading the chunks
+    if (data.withSegmentsCache) {
+      this.pauseDownloadingSegments();
+    }
     super.onMediaAttached(event, data);
     const media = data.media;
     this.onvplaying = this.onMediaPlaying.bind(this);
@@ -526,6 +543,18 @@ export default class StreamController
       this.fragmentTracker,
       this.hls,
     );
+
+    // metadata has been appended if using segments cache
+    if (data.withSegmentsCache) {
+      this.loadedmetadata = true;
+      this.seekToStartPos();
+      BufferHelper.addBufferChangeListener(media, () => {}, () => {
+        this.resumeDownloadingSegments();
+      });
+      self.setTimeout(() => {
+        this.resumeDownloadingSegments();
+      }, MAX_DECODE_SOURCE_BUFFER_FROM_CACHE)
+    }
   }
 
   protected onMediaDetaching() {
@@ -987,6 +1016,25 @@ export default class StreamController
     this.levels = data.levels;
   }
 
+
+  protected onBufferAppended(event: Events.BUFFER_APPENDED) {
+    if (!this.media || !this.hls.config.progressive) {
+      return;
+    }
+    if (!this.fragCurrent && !this.fragPrevious) {
+      return;
+    }
+
+    if (
+        !this.loadedmetadata &&
+        BufferHelper.getBuffered(this.media).length &&
+        (this.fragCurrent?.sn === this.fragPrevious?.sn|| !this.fragPrevious)
+    ) {
+      this.loadedmetadata = true;
+      this.seekToStartPos();
+    }
+  }
+
   public swapAudioCodec() {
     this.audioCodecSwap = !this.audioCodecSwap;
   }
@@ -1331,6 +1379,7 @@ export default class StreamController
           part: null,
           chunkMeta,
           parent: frag.type,
+          isInitSegment: true,
         });
       }
     });
@@ -1452,5 +1501,21 @@ export default class StreamController
 
   get forceStartLoad() {
     return this._forceStartLoad;
+  }
+
+  public pauseDownloadingSegments () {
+    this.loadingSegmentsPaused = true;
+  }
+
+  public resumeDownloadingSegments () {
+    this.loadingSegmentsPaused = false;
+  }
+
+  get stallDuration() {
+    return this.gapController?.stallDuration ?? 0;
+  }
+
+  get isUsingWebWorker(): boolean {
+    return !!this.transmuxer?.isUsingWebWorker ?? false;
   }
 }

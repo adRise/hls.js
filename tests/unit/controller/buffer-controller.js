@@ -1,7 +1,14 @@
 import sinon from 'sinon';
 import Hls from '../../../src/hls';
 import BufferController from '../../../src/controller/buffer-controller';
+import { ElementaryStreamTypes, Fragment } from '../../../src/loader/fragment';
+import { ChunkMetadata } from '../../../src/types/transmuxer';
+import { PlaylistLevelType } from '../../../src/types/loader';
 import { Events } from '../../../src/events';
+import { mockBufferAppendingData, mockSegmentCachesWithAllData } from '../../mocks/data';
+
+
+
 
 describe('BufferController tests', function () {
   let hls;
@@ -181,7 +188,7 @@ describe('BufferController tests', function () {
       });
       sandbox.stub(bufferController.mediaSource, 'addSourceBuffer');
 
-      hls.on(Hls.Events.BUFFER_CREATED, (event, data) => {
+      hls.once(Hls.Events.BUFFER_CREATED, (event, data) => {
         const tracks = data.tracks;
         expect(bufferController.pendingTracks).to.not.equal(tracks);
         expect(bufferController.tracks).to.equal(tracks);
@@ -193,7 +200,7 @@ describe('BufferController tests', function () {
         self.setTimeout(() => {
           expect(data.error.message).to.equal(null);
           done();
-        });
+        }, 0);
       });
 
       bufferController.pendingTracks = {
@@ -356,4 +363,217 @@ describe('BufferController tests', function () {
       });
     });
   });
+
+  describe('forceDeleteSegmentFromCache', function() {
+    it('will force remove it from array `segmentsCacheArr`', function() {
+      var frag = {
+        type: 'audio'
+      };
+      var frag2 = {
+        type: 'video'
+      }
+      var frag3 = {
+        type: 'video'
+      }
+      bufferController.segmentsCacheArr = [frag, frag2, frag3];
+      bufferController.forceDeleteSegmentFromCache(1)
+      expect(bufferController.segmentsCacheArr.length).to.equal(2);
+    })
+  });
+  describe('updateSegmentsCacheViaCurrentTime', function() {
+    it('it will auto remove the segment which is less than media current time', function() {
+      bufferController.segmentsCacheArr = [{
+        type: 'video',
+        frag: {
+          startDTS: 5,
+          endDTS: 10,
+        }
+      },{
+        type: 'video',
+        frag: {
+          startDTS: 10,
+          endDTS: 15,
+        }
+      }];
+      bufferController.media = {
+        currentTime: 11,
+      }
+      bufferController.updateSegmentsCacheViaCurrentTime();
+      expect(bufferController.segmentsCacheArr.length).to.equal(1);
+    });
+    it('it will stop remove until meet a fragment endPTS > media current time', function() {
+      bufferController.segmentsCacheArr = [{
+        type: 'video',
+        frag: {
+          startDTS: 5,
+          endDTS: 10,
+        }
+      },{
+        type: 'video',
+        frag: {
+          startDTS: 10,
+          endDTS: 15,
+        }
+      },
+      {
+        type: 'video',
+        frag: {
+          startDTS: 15,
+          endDTS: 20,
+        }
+      }];
+      bufferController.media = {
+        currentTime: 16,
+      }
+      bufferController.updateSegmentsCacheViaCurrentTime();
+      expect(bufferController.segmentsCacheArr.length).to.equal(1);
+      expect(bufferController.segmentsCacheArr[0].frag.startDTS).to.equal(15);
+    });
+  });
+
+  describe('appendSegmentCache', function() {
+    it('if enableSegmentsCache to be `false`, the `segmentsCacheArr` will not be update', function() {
+      bufferController.appendSegmentCache(mockBufferAppendingData);
+      expect(bufferController.segmentsCacheArr.length).to.equal(0);
+    });
+    it('the `segmentsCacheArr` will be updated if enableSegmentsCache = true', function() {
+      bufferController.enableSegmentsCache = true;
+      bufferController.appendSegmentCache(mockBufferAppendingData);
+      expect(bufferController.segmentsCacheArr.length).to.equal(1);
+    });
+  });
+
+  describe('forceReleaseSegmentsCache', function() {
+    it('it will auto remove the segment which is less than media current time and `revertSegmentsCacheDuration`config ', function() {
+      const hls2 = new Hls({
+        revertSegmentsCacheDuration: 10,
+      });
+      const bufferController2 = new BufferController(hls2);
+      bufferController2.segmentsCacheArr = [{
+        type: 'video',
+        frag: {
+          startDTS: 5,
+          endDTS: 10,
+        }
+      },{
+        type: 'video',
+        frag: {
+          startDTS: 10,
+          endDTS: 15,
+        }
+      },
+      {
+        type: 'video',
+        frag: {
+          startDTS: 15,
+          endDTS: 20,
+        }
+      },
+      {
+        type: 'video',
+        frag: {
+          startDTS: 20,
+          endDTS: 25,
+        }
+      },
+      {
+        type: 'video',
+        frag: {
+          startDTS: 25,
+          endDTS: 30,
+        }
+      }];
+      bufferController2.media = {
+        currentTime: 12,
+      }
+      bufferController2.forceReleaseSegmentsCache();
+      expect(bufferController2.segmentsCacheArr.length).to.equal(3);
+      const endData = bufferController2.segmentsCacheArr[bufferController2.segmentsCacheArr.length - 1]
+      expect(endData.frag.startDTS).to.not.equal(25);
+    });
+    it('it will not call `forceDeleteSegmentFromCache` when segmentsCache is empty', function() {
+      const spyForceDeleteSegmentFromCache = sandbox.spy(bufferController, 'forceDeleteSegmentFromCache');
+      bufferController.forceReleaseSegmentsCache();
+      expect(spyForceDeleteSegmentFromCache).to.not.have.calledOnce;
+    });
+  });
+
+  describe('loadSegmentsFromCache', function() {
+    it('it will not set revertSegmentsCacheTaskSet if segmentsCache is empty', function() {
+      bufferController.loadSegmentsFromCache();
+      expect(bufferController.revertSegmentsCacheTaskSet.size).to.equal(0);
+    });
+    it('it will trigger error if segmentsCache only one type chunk', function() {
+      const triggerSpy = sandbox.spy(hls, 'trigger');
+      bufferController.segmentsCacheArr = [{
+        type: 'video',
+        frag: {
+          startDTS: 5,
+          endDTS: 10,
+        }
+      }];
+      bufferController.loadSegmentsFromCache();
+      expect(triggerSpy).to.have.been.calledOnce;
+    });
+    it('it will trigger error if segmentsCache contains no init fragment data', function() {
+      const triggerSpy = sandbox.spy(hls, 'trigger');
+      bufferController.segmentsCacheArr = [{
+        type: 'video',
+        frag: {
+          startDTS: 5,
+          endDTS: 10,
+        }
+      },
+      {
+        type: 'audio',
+        frag: {
+          startDTS: 5,
+          endDTS: 10,
+        }
+      }];
+      bufferController.loadSegmentsFromCache();
+      expect(triggerSpy).to.have.been.calledOnce;
+    });
+    it('it will call `onBufferAppending` if segmentsCache is correct chunks', function() {
+      const spyBufferAppending = sandbox.stub(bufferController, 'onBufferAppending');
+      bufferController.segmentsCacheArr = JSON.parse(JSON.stringify(mockSegmentCachesWithAllData));
+      bufferController.loadSegmentsFromCache();
+      expect(spyBufferAppending).to.have.been.called;
+    });
+    it('it will add `START_REVERT_SEGMENT_CACHE_FLAG = -1000` flag if segmentsCache is correct chunks', function() {
+      sandbox.stub(bufferController, 'onBufferAppending');
+      bufferController.segmentsCacheArr = JSON.parse(JSON.stringify(mockSegmentCachesWithAllData));
+      bufferController.loadSegmentsFromCache();
+      expect(bufferController.revertSegmentsCacheTaskSet.has(-1000)).to.equal(true);
+    });
+  });
+
+  describe('removeFinishedSegmentCacheTask', function() {
+    it('it will do nothing if no media', function() {
+      bufferController.revertSegmentsCacheTaskSet.add(1);
+      bufferController.removeFinishedSegmentCacheTask(1);
+      expect(bufferController.revertSegmentsCacheTaskSet.size).to.equal(1);
+    });
+
+    it('it will delete revertSegmentsCacheTaskSet item via the specify parma', function() {
+      bufferController.revertSegmentsCacheTaskSet.add(1);
+      bufferController.revertSegmentsCacheTaskSet.add(2);
+      bufferController.media = {};
+      bufferController.removeFinishedSegmentCacheTask(1);
+      expect(bufferController.revertSegmentsCacheTaskSet.has(1)).to.equal(false);
+      expect(bufferController.revertSegmentsCacheTaskSet.has(2)).to.equal(true);
+    });
+
+  });
+
+  describe('if `revertSegmentsCacheDuration` is set more than 0 ', function() {
+
+    it('enableSegmentsCache will be `true` if `revertSegmentsCacheDuration` > 0', function () {
+      const hls2 = new Hls({
+        revertSegmentsCacheDuration: 10,
+      });;
+      const bufferController2 = new BufferController(hls2);
+      expect(bufferController2.enableSegmentsCache).to.equal(true);
+    })
+  })
 });

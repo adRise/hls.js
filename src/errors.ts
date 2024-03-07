@@ -12,14 +12,19 @@ export enum ErrorTypes {
 }
 
 export enum ErrorDetails {
+  KEY_SYSTEM_INVALID_HDCP_VERSION = 'keySystemInvalidHdcpVersion',
+  KEY_SYSTEM_LICENSE_INVALID_STATUS = 'keySystemLicenseInvalidStatus',
+  KEY_SYSTEM_LICENSE_INTERNAL_ERROR = 'keySystemLicenseInternalError',
+  KEY_SYSTEM_LICENSE_EXPIRED = 'keySystemLicenseExpired',
   KEY_SYSTEM_NO_KEYS = 'keySystemNoKeys',
   KEY_SYSTEM_NO_ACCESS = 'keySystemNoAccess',
   KEY_SYSTEM_NO_SESSION = 'keySystemNoSession',
   KEY_SYSTEM_NO_CONFIGURED_LICENSE = 'keySystemNoConfiguredLicense',
   KEY_SYSTEM_LICENSE_REQUEST_FAILED = 'keySystemLicenseRequestFailed',
+  KEY_SYSTEM_SESSION_UPDATE_FAILED = 'keySystemSessionUpdateFailed',
+  KEY_SYSTEM_NO_INIT_DATA = 'keySystemNoInitData',
   KEY_SYSTEM_SERVER_CERTIFICATE_REQUEST_FAILED = 'keySystemServerCertificateRequestFailed',
   KEY_SYSTEM_SERVER_CERTIFICATE_UPDATE_FAILED = 'keySystemServerCertificateUpdateFailed',
-  KEY_SYSTEM_SESSION_UPDATE_FAILED = 'keySystemSessionUpdateFailed',
   KEY_SYSTEM_STATUS_OUTPUT_RESTRICTED = 'keySystemStatusOutputRestricted',
   KEY_SYSTEM_STATUS_INTERNAL_ERROR = 'keySystemStatusInternalError',
   // Identifier for a manifest load error - data: { url : faulty URL, response : { code: error code, text: error text }}
@@ -57,6 +62,8 @@ export enum ErrorDetails {
   // Identifier for a fragment parsing error event - data: { id : demuxer Id, reason : parsing error description }
   // will be renamed DEMUX_PARSING_ERROR and switched to MUX_ERROR in the next major release
   FRAG_PARSING_ERROR = 'fragParsingError',
+  // Identifier for a fragment revert error event - data: {frag: fragment object}
+  FRAG_REVERT_ERROR = 'fragRevetError',
   // Identifier for a fragment or part load skipped because of a GAP tag or attribute
   FRAG_GAP = 'fragGap',
   // Identifier for a remux alloc error event - data: { id : demuxer Id, frag : fragment object, bytes : nb of bytes on which allocation failed , reason : error text }
@@ -71,6 +78,8 @@ export enum ErrorDetails {
   BUFFER_INCOMPATIBLE_CODECS_ERROR = 'bufferIncompatibleCodecsError',
   // Identifier for a buffer append error - data: append error description
   BUFFER_APPEND_ERROR = 'bufferAppendError',
+  // Identifier for a buffer append error with revert buffer - data: append error description
+  BUFFER_REVERT_APPEND_ERROR = 'bufferRevertAppendError',
   // Identifier for a buffer appending error event - data: appending error description
   BUFFER_APPENDING_ERROR = 'bufferAppendingError',
   // Identifier for a buffer stalled error event
@@ -81,6 +90,8 @@ export enum ErrorDetails {
   BUFFER_SEEK_OVER_HOLE = 'bufferSeekOverHole',
   // Identifier for a buffer nudge on stall (playback is stuck although currentTime is in a buffered area)
   BUFFER_NUDGE_ON_STALL = 'bufferNudgeOnStall',
+  BUFFER_CUE_EMPTY_ON_SB_UPDATE_START = 'bufferCueEmptyOnSBUpdateStart',
+  BUFFER_CUE_EMPTY_ON_SB_UPDATE_END = 'bufferCueEmptyOnSBUpdateEnd',
   // Identifier for an internal exception happening inside hls.js while handling an event
   INTERNAL_EXCEPTION = 'internalException',
   // Identifier for an internal call to abort a loader

@@ -1,15 +1,11 @@
 /* eslint-disable dot-notation */
 import Hls from '../../../src/hls';
-import { Events } from '../../../src/events';
-import {
-  FragmentTracker,
-  FragmentState,
-} from '../../../src/controller/fragment-tracker';
+import {FragmentState, FragmentTracker} from '../../../src/controller/fragment-tracker';
 import StreamController from '../../../src/controller/stream-controller';
-import { State } from '../../../src/controller/base-stream-controller';
-import { mockFragments } from '../../mocks/data';
-import { Fragment } from '../../../src/loader/fragment';
-import { LevelDetails } from '../../../src/loader/level-details';
+import {State} from '../../../src/controller/base-stream-controller';
+import {mockFragments} from '../../mocks/data';
+import {Fragment} from '../../../src/loader/fragment';
+import {LevelDetails} from '../../../src/loader/level-details';
 import M3U8Parser from '../../../src/loader/m3u8-parser';
 import { LoadStats } from '../../../src/loader/load-stats';
 import { PlaylistLevelType } from '../../../src/types/loader';
@@ -78,7 +74,7 @@ describe('StreamController', function () {
       startTimeOffset,
       variableList,
     } = result;
-    hls.trigger(Events.MANIFEST_LOADED, {
+    hls.trigger(Hls.Events.MANIFEST_LOADED, {
       levels,
       audioTracks: [],
       contentSteering,
@@ -123,7 +119,7 @@ describe('StreamController', function () {
       details.live = false;
       details.totalduration = 200;
       details.fragments.push({} as any);
-      hls.trigger(Events.LEVEL_LOADED, {
+      hls.trigger(Hls.Events.LEVEL_LOADED, {
         details,
         id: 0,
         level: 0,
@@ -149,7 +145,7 @@ describe('StreamController', function () {
         startTimeOffset,
         variableList,
       } = result;
-      hls.trigger(Events.MANIFEST_LOADED, {
+      hls.trigger(Hls.Events.MANIFEST_LOADED, {
         levels,
         audioTracks: [],
         contentSteering,
@@ -168,7 +164,7 @@ describe('StreamController', function () {
       details.live = true;
       details.totalduration = 30;
       details.fragments.push({ start: 0 } as any);
-      hls.trigger(Events.LEVEL_LOADED, {
+      hls.trigger(Hls.Events.LEVEL_LOADED, {
         details,
         id: 0,
         level: 0,
@@ -398,7 +394,7 @@ describe('StreamController', function () {
     });
 
     function assertLoadingState(frag) {
-      expect(triggerSpy).to.have.been.calledWith(Events.FRAG_LOADING, {
+      expect(triggerSpy).to.have.been.calledWith(Hls.Events.FRAG_LOADING, {
         frag,
         targetBufferTime: 0,
       });
@@ -504,6 +500,42 @@ describe('StreamController', function () {
       expect(streamController['loadedmetadata']).to.be.false;
     });
 
+    describe('onBufferAppended', function () {
+      beforeEach(function () {
+        hls.config.progressive = true;
+        const firstFrag = new Fragment(PlaylistLevelType.MAIN, '');
+        firstFrag.duration = 5.0;
+        firstFrag.level = 1;
+        firstFrag.start = 0;
+        firstFrag.sn = 1;
+        firstFrag.cc = 0;
+        streamController['loadedmetadata'] = false;
+        streamController['fragCurrent'] = streamController['fragPrevious'] =
+          firstFrag;
+      });
+      afterEach(() => {
+        hls.config.progressive = false;
+      })
+      it('should seek to start pos when buffer appended', function () {
+        // @ts-expect-error private method
+        const seekStub = sandbox.stub(streamController, 'seekToStartPos');
+        streamController['onBufferAppended'](Hls.Events.BUFFER_APPENDED);
+        expect(seekStub).to.have.been.calledOnce;
+        expect(streamController['loadedmetadata']).to.be.true;
+      });
+
+      it('should not seek to start pos fragCurrent and fragPrevious is null', function () {
+        // @ts-expect-error private method
+        const seekStub = sandbox.stub(streamController, 'seekToStartPos');
+
+        streamController['fragCurrent'] = streamController['fragPrevious'] =
+          null;
+        streamController['onBufferAppended'](Hls.Events.BUFFER_APPENDED);
+        expect(seekStub).to.not.have.been.calledOnce;
+        expect(streamController['loadedmetadata']).to.be.false;
+      });
+    });
+
     describe('seekToStartPos', function () {
       it('should seek to startPosition when startPosition is not buffered & the media is not seeking', function () {
         streamController['startPosition'] = 5;
@@ -521,7 +553,7 @@ describe('StreamController', function () {
 
     describe('startLoad', function () {
       beforeEach(function () {
-        hls.trigger(Events.LEVELS_UPDATED, {
+        hls.trigger(Hls.Events.LEVELS_UPDATED, {
           levels: [
             new Level({
               name: '',
@@ -606,7 +638,7 @@ describe('StreamController', function () {
 
       it('should not signal a bandwidth test with only one level', function () {
         streamController['startFragRequested'] = false;
-        hls.trigger(Events.LEVELS_UPDATED, {
+        hls.trigger(Hls.Events.LEVELS_UPDATED, {
           levels: [
             new Level({
               name: '',

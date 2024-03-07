@@ -226,6 +226,7 @@ export default class TransmuxerInterface {
       trackSwitch,
       timeOffset,
       initSegmentChange,
+      frag.duration
     );
     if (!contiguous || discontinuity || initSegmentChange) {
       logger.log(`[transmuxer-interface, ${frag.type}]: Starting new transmux session for sn: ${chunkMeta.sn} p: ${chunkMeta.part} level: ${chunkMeta.level} id: ${chunkMeta.id}
@@ -409,5 +410,9 @@ export default class TransmuxerInterface {
   private handleTransmuxComplete(result: TransmuxerResult) {
     result.chunkMeta.transmuxing.end = self.performance.now();
     this.onTransmuxComplete(result);
+  }
+
+  get isUsingWebWorker(): boolean {
+    return !!this.useWorker;
   }
 }

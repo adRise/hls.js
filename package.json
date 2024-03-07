@@ -1,15 +1,12 @@
 {
-  "name": "hls.js",
+  "name": "@adrise/hls.js",
   "license": "Apache-2.0",
+  "version": "1.5.7-rc.1",
   "description": "JavaScript HLS client using MediaSourceExtension",
-  "homepage": "https://github.com/video-dev/hls.js",
-  "authors": "Guillaume du Pontavice <g.du.pontavice@gmail.com>",
+  "homepage": "https://github.com/adRise/web_ott_npm_private_packages/tree/master/packages/hls.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/video-dev/hls.js"
-  },
-  "bugs": {
-    "url": "https://github.com/video-dev/hls.js/issues"
+    "url": "git@github.com:adRise/web_ott_npm_private_packages.git"
   },
   "main": "./dist/hls.js",
   "module": "./dist/hls.mjs",
@@ -58,7 +55,7 @@
     "test:func:sauce": "SAUCE=1 UA=safari OS='OS X 10.15' BABEL_ENV=development mocha --require @babel/register tests/functional/auto/setup.js --timeout 40000 --exit",
     "type-check": "tsc --noEmit",
     "type-check:watch": "npm run type-check -- --watch",
-    "prepare": "husky install"
+    "prepare": "cd ../.. && husky install"
   },
   "devDependencies": {
     "@babel/core": "7.23.7",

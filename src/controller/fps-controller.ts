@@ -2,8 +2,16 @@ import { Events } from '../events';
 import { logger } from '../utils/logger';
 import type { ComponentAPI } from '../types/component-api';
 import type Hls from '../hls';
-import type { MediaAttachingData } from '../types/events';
+import type { LevelSwitchedData, MediaAttachingData } from '../types/events';
 import StreamController from './stream-controller';
+
+export interface FrameInfoForCertainLevel {
+  resolution?: string;
+  codec?: string;
+  fps?: string;
+  decodedFrames: number;
+  droppedFrames: number;
+}
 
 class FPSController implements ComponentAPI {
   private hls: Hls;
@@ -26,11 +34,34 @@ class FPSController implements ComponentAPI {
     this.streamController = streamController;
   }
 
+  public getFrameInfoForCurrentLevel(): FrameInfoForCertainLevel | null {
+    const attr = this.hls.levels[this.hls.currentLevel]?.attrs;
+    if (!attr) {
+      return null;
+    }
+    const videoPlaybackQuality = this.getVideoPlaybackQuality();
+    if (!videoPlaybackQuality) {
+      return null;
+    }
+    const { RESOLUTION: resolution, CODECS: codec, 'FRAME-RATE': fps} = attr;
+    const { totalVideoFrames, droppedVideoFrames } = videoPlaybackQuality;
+    const frameInfo = {
+      resolution, 
+      codec, 
+      fps, 
+      decodedFrames: totalVideoFrames - this.lastDecodedFrames,
+      droppedFrames: droppedVideoFrames - this.lastDroppedFrames,
+    };
+    return frameInfo;
+  }
+
   protected registerListeners() {
     this.hls.on(Events.MEDIA_ATTACHING, this.onMediaAttaching, this);
+    this.hls.on(Events.LEVEL_SWITCHED, this.onLevelSwitched, this);
   }
 
   protected unregisterListeners() {
+    this.hls.off(Events.LEVEL_SWITCHED, this.onLevelSwitched, this);
     this.hls.off(Events.MEDIA_ATTACHING, this.onMediaAttaching, this);
   }
 
@@ -49,20 +80,32 @@ class FPSController implements ComponentAPI {
     data: MediaAttachingData,
   ) {
     const config = this.hls.config;
-    if (config.capLevelOnFPSDrop) {
-      const media =
+    const media =
         data.media instanceof self.HTMLVideoElement ? data.media : null;
-      this.media = media;
-      if (media && typeof media.getVideoPlaybackQuality === 'function') {
-        this.isVideoPlaybackQualityAvailable = true;
-      }
-
-      self.clearInterval(this.timer);
-      this.timer = self.setInterval(
-        this.checkFPSInterval.bind(this),
-        config.fpsDroppedMonitoringPeriod,
-      );
+    this.media = media;
+    if (media && typeof media.getVideoPlaybackQuality === 'function') {
+      this.isVideoPlaybackQualityAvailable = true;
     }
+
+    self.clearInterval(this.timer);
+    this.timer = self.setInterval(
+      this.checkFPSInterval.bind(this),
+      config.fpsDroppedMonitoringPeriod
+    );
+  }
+
+  protected onLevelSwitched(
+    event: Events.LEVEL_SWITCHED,
+    data: LevelSwitchedData,
+  ) {
+    const videoPlaybackQuality = this.getVideoPlaybackQuality();
+    if (!videoPlaybackQuality) {
+      return;
+    }
+    logger.log('reset FPS check due to level switching');
+    const { totalVideoFrames, droppedVideoFrames } = videoPlaybackQuality
+    this.lastDroppedFrames = droppedVideoFrames;
+    this.lastDecodedFrames = totalVideoFrames;
   }
 
   checkFPS(
@@ -73,17 +116,20 @@ class FPSController implements ComponentAPI {
     const currentTime = performance.now();
     if (decodedFrames) {
       if (this.lastTime) {
+        const hls = this.hls;
         const currentPeriod = currentTime - this.lastTime;
         const currentDropped = droppedFrames - this.lastDroppedFrames;
         const currentDecoded = decodedFrames - this.lastDecodedFrames;
+        if (currentDecoded < hls.config.fpsDroppedMonitoringFramesRequire) {
+          return;
+        }
         const droppedFPS = (1000 * currentDropped) / currentPeriod;
-        const hls = this.hls;
         hls.trigger(Events.FPS_DROP, {
           currentDropped: currentDropped,
           currentDecoded: currentDecoded,
           totalDroppedFrames: droppedFrames,
         });
-        if (droppedFPS > 0) {
+        if (droppedFPS > 0 && hls.config.capLevelOnFPSDrop) {
           // logger.log('checkFPS : droppedFPS/decodedFPS:' + droppedFPS/(1000 * currentDecoded / currentPeriod));
           if (
             currentDropped >
@@ -104,6 +150,7 @@ class FPSController implements ComponentAPI {
                 level: currentLevel,
                 droppedLevel: hls.currentLevel,
               });
+              logger.warn('trigger level capping');
               hls.autoLevelCapping = currentLevel;
               this.streamController.nextLevelSwitch();
             }
@@ -111,29 +158,34 @@ class FPSController implements ComponentAPI {
         }
       }
       this.lastTime = currentTime;
-      this.lastDroppedFrames = droppedFrames;
-      this.lastDecodedFrames = decodedFrames;
+    }
+  }
+
+  getVideoPlaybackQuality() {
+    if (!this.media) {
+      return null;
+    }
+    const video = this.media;
+    if (this.isVideoPlaybackQualityAvailable) {
+      const { totalVideoFrames, droppedVideoFrames } = video.getVideoPlaybackQuality();
+      return {
+        totalVideoFrames,
+        droppedVideoFrames
+      }
+    }
+    // HTMLVideoElement doesn't include the webkit types
+    return {
+      totalVideoFrames: (video as any).webkitDecodedFrameCount as number,
+      droppedVideoFrames: (video as any).webkitDroppedFrameCount as number,
     }
   }
 
   checkFPSInterval() {
     const video = this.media;
-    if (video) {
-      if (this.isVideoPlaybackQualityAvailable) {
-        const videoPlaybackQuality = video.getVideoPlaybackQuality();
-        this.checkFPS(
-          video,
-          videoPlaybackQuality.totalVideoFrames,
-          videoPlaybackQuality.droppedVideoFrames,
-        );
-      } else {
-        // HTMLVideoElement doesn't include the webkit types
-        this.checkFPS(
-          video,
-          (video as any).webkitDecodedFrameCount as number,
-          (video as any).webkitDroppedFrameCount as number,
-        );
-      }
+    const videoPlaybackQuality = this.getVideoPlaybackQuality();
+    if (video && videoPlaybackQuality) {
+      const { totalVideoFrames, droppedVideoFrames} = videoPlaybackQuality;
+      this.checkFPS(video, totalVideoFrames, droppedVideoFrames);
     }
   }
 }

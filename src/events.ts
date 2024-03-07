@@ -168,6 +168,8 @@ export enum Events {
   BACK_BUFFER_REACHED = 'hlsBackBufferReached',
   // fired after steering manifest has been loaded - data: { steeringManifest: SteeringManifest object, url: steering manifest URL }
   STEERING_MANIFEST_LOADED = 'hlsSteeringManifestLoaded',
+  // fired when EME media key sessions are closed and media key is removed - data: { }
+  EME_DESTROYED = 'hlsEmeDestroyed',
 }
 
 /**
@@ -375,6 +377,7 @@ export interface HlsListeners {
     event: Events.STEERING_MANIFEST_LOADED,
     data: SteeringManifestLoadedData,
   ) => void;
+  [Events.EME_DESTROYED]: (event: Events.EME_DESTROYED, data: {}) => void;
 }
 export interface HlsEventEmitter {
   on<E extends keyof HlsListeners, Context = undefined>(

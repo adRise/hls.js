@@ -8,6 +8,7 @@ import {
   patchEncyptionData,
 } from '../utils/mp4-tools';
 import {
+  findBox,
   getDuration,
   getStartDTS,
   offsetStartDTS,
@@ -29,6 +30,9 @@ import type {
   DemuxedUserdataTrack,
   PassthroughTrack,
 } from '../types/demuxer';
+import type { HlsEventEmitter } from '../events';
+import type { HlsConfig } from '../config';
+import type { PlaylistLevelType } from '../types/loader';
 import type { DecryptData } from '../loader/level-key';
 import type { RationalTimestamp } from '../utils/timescale-conversion';
 
@@ -40,6 +44,11 @@ class PassThroughRemuxer implements Remuxer {
   private initPTS: RationalTimestamp | null = null;
   private initTracks?: TrackSet;
   private lastEndTime: number | null = null;
+  private config: HlsConfig;
+
+  constructor(observer: HlsEventEmitter, config: HlsConfig) {
+    this.config = config;
+  }
 
   public destroy() {}
 
@@ -125,8 +134,12 @@ class PassThroughRemuxer implements Remuxer {
     textTrack: DemuxedUserdataTrack,
     timeOffset: number,
     accurateTimeOffset: boolean,
+    flush: boolean,
+    playlistType: PlaylistLevelType,
+    fragmentDuration: number
   ): RemuxerResult {
     let { initPTS, lastEndTime } = this;
+    const { progressiveAppendMp4 } = this.config;
     const result: RemuxerResult = {
       audio: undefined,
       video: undefined,
@@ -168,7 +181,13 @@ class PassThroughRemuxer implements Remuxer {
       this.emitInitSegment = false;
     }
 
-    const duration = getDuration(data, initData);
+    let duration;
+    if (progressiveAppendMp4 && findBox(data, ['moof', 'traf', 'sidx']).length === 0 && fragmentDuration) {
+      // If the partial progressive data has no duration info, we use the fragment duration.
+      duration = fragmentDuration;
+    } else {
+      duration = getDuration(data, initData);
+    }
     const startDTS = getStartDTS(initData, data);
     const decodeTime = startDTS === null ? timeOffset : startDTS;
     if (

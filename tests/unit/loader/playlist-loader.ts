@@ -894,7 +894,7 @@ lo007ts`;
     expect(result[0].autoselect).to.be.true;
     expect(result[0].default).to.be.true;
     expect(result[0].forced).to.be.false;
-    expect(result[0].groupId).to.equal('600k');
+    expect(result[0].groupId).to.equal('600khttps://hls.ted.com/');
     expect(result[0].lang).to.equal('eng');
     expect(result[0].name).to.equal('Audio');
     expect(result[0].url).to.equal(

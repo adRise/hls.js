@@ -588,13 +588,13 @@ export default class BaseStreamController
       }
     }
     this.state = State.IDLE;
-    if (!media) {
+    if (!media || (!this.fragCurrent && !this.fragPrevious)) {
       return;
     }
     if (
       !this.loadedmetadata &&
       frag.type == PlaylistLevelType.MAIN &&
-      media.buffered.length &&
+      BufferHelper.getBuffered(media).length &&
       this.fragCurrent?.sn === this.fragPrevious?.sn
     ) {
       this.loadedmetadata = true;
@@ -646,7 +646,9 @@ export default class BaseStreamController
     }
 
     let keyLoadingPromise: Promise<KeyLoadedData | void> | null = null;
-    if (frag.encrypted && !frag.decryptdata?.key) {
+    // Skip this check if forceFilterDrmKeySystemWithConfig is true. There is a bug in our manifestfile
+    // See https://github.com/shaka-project/shaka-player/blob/df2739ea1d21fc762947f302eb463d1dfa29ecd3/lib/media/drm_engine.js#L1608
+    if (frag.encrypted && !frag.decryptdata?.key && !this.config.forceFilterDrmKeySystemWithConfig) {
       this.log(
         `Loading key for ${frag.sn} of [${details.startSN}-${details.endSN}], ${
           this.logPrefix === '[stream-controller]' ? 'level' : 'track'
@@ -747,7 +749,7 @@ export default class BaseStreamController
 
     this.log(
       `Loading fragment ${frag.sn} cc: ${frag.cc} ${
-        details ? 'of [' + details.startSN + '-' + details.endSN + '] ' : ''
+        level?.details ? 'of [' + level?.details.startSN + '-' + level?.details.endSN + '] ' : ''
       }${this.logPrefix === '[stream-controller]' ? 'level' : 'track'}: ${
         frag.level
       }, target: ${parseFloat(targetBufferTime.toFixed(3))}`,
@@ -759,7 +761,14 @@ export default class BaseStreamController
     this.state = State.FRAG_LOADING;
 
     // Load key before streaming fragment data
-    const dataOnProgress = this.config.progressive;
+    const isStartupedAndSeeking = this.loadedmetadata && this.media?.seeking;
+    const isFastSpeed = this.hls.bandwidthEstimate > (level?.realBitrate || level?.bitrate || Number.POSITIVE_INFINITY) * this.config.progressiveFastSpeedFactor;
+    const dataOnProgress = this.config.progressive &&
+      (!this.config.progressiveStartedUpSeekingEnable || isStartupedAndSeeking) &&
+      (!this.config.progressiveFastSpeedEnable || isFastSpeed);
+    if (this.config.progressiveAppendMp4 && dataOnProgress) {
+      logger.log(`[base-stream-controller]: this fragment request uses progressive fetch with isStartupedAndSeeking:${isStartupedAndSeeking} isFastSpeed:${isFastSpeed}`);
+    }
     let result: Promise<PartsLoadedData | FragLoadedData | null>;
     if (dataOnProgress && keyLoadingPromise) {
       result = keyLoadingPromise
