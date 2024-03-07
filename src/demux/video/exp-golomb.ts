@@ -5,10 +5,10 @@
 import { logger } from '../../utils/logger';
 
 class ExpGolomb {
-  private data: Uint8Array;
+  protected data: Uint8Array;
   public bytesAvailable: number;
-  private word: number;
-  private bitsAvailable: number;
+  protected word: number;
+  protected bitsAvailable: number;
 
   constructor(data: Uint8Array) {
     this.data = data;

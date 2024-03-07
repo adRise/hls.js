@@ -22,6 +22,7 @@ export interface Remuxer {
     accurateTimeOffset: boolean,
     flush: boolean,
     playlistType: PlaylistLevelType,
+    fragmentDuration?: number,
   ): RemuxerResult;
   resetInitSegment(
     initSegment: Uint8Array | undefined,

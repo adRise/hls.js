@@ -141,22 +141,45 @@ function createMediaKeySystemConfigurations(
 ): MediaKeySystemConfiguration[] {
   const baseConfig: MediaKeySystemConfiguration = {
     initDataTypes: initDataTypes,
-    persistentState: drmSystemOptions.persistentState || 'optional',
-    distinctiveIdentifier: drmSystemOptions.distinctiveIdentifier || 'optional',
-    sessionTypes: drmSystemOptions.sessionTypes || [
-      drmSystemOptions.sessionType || 'temporary',
-    ],
-    audioCapabilities: audioCodecs.map((codec) => ({
-      contentType: `audio/mp4; codecs="${codec}"`,
-      robustness: drmSystemOptions.audioRobustness || '',
-      encryptionScheme: drmSystemOptions.audioEncryptionScheme || null,
-    })),
-    videoCapabilities: videoCodecs.map((codec) => ({
-      contentType: `video/mp4; codecs="${codec}"`,
-      robustness: drmSystemOptions.videoRobustness || '',
-      encryptionScheme: drmSystemOptions.videoEncryptionScheme || null,
-    })),
+    audioCapabilities: audioCodecs.map((codec) => {
+      const audioCapability: MediaKeySystemMediaCapability = {
+        contentType: `audio/mp4; codecs="${codec}"`,
+      };
+      if (drmSystemOptions.audioRobustness) {
+        audioCapability.robustness = drmSystemOptions.audioRobustness;
+      }
+      if (drmSystemOptions.audioEncryptionScheme) {
+        audioCapability.encryptionScheme = drmSystemOptions.audioEncryptionScheme
+      }
+      return audioCapability;
+    }),
+    videoCapabilities: videoCodecs.map((codec) => {
+      const videoCapability: MediaKeySystemMediaCapability = {
+        contentType: `video/mp4; codecs="${codec}"`,
+      };
+      if (drmSystemOptions.videoRobustness) {
+        videoCapability.robustness = drmSystemOptions.videoRobustness;
+      }
+      if (drmSystemOptions.videoEncryptionScheme) {
+        videoCapability.encryptionScheme = drmSystemOptions.videoEncryptionScheme
+      }
+      return videoCapability;
+    }),
   };
+
+  if (drmSystemOptions.persistentState) {
+    baseConfig.persistentState = drmSystemOptions.persistentState;
+  }
+
+  if (drmSystemOptions.distinctiveIdentifier) {
+    baseConfig.distinctiveIdentifier = drmSystemOptions.distinctiveIdentifier;
+  }
+
+  if (drmSystemOptions.sessionTypes) {
+    baseConfig.sessionTypes = drmSystemOptions.sessionTypes;
+  } else if (drmSystemOptions.sessionType) {
+    baseConfig.sessionTypes = [drmSystemOptions.sessionType];
+  }
 
   return [baseConfig];
 }

@@ -21,6 +21,7 @@ import type BufferController from './controller/buffer-controller';
 import type CapLevelController from './controller/cap-level-controller';
 import type CMCDController from './controller/cmcd-controller';
 import type EMEController from './controller/eme-controller';
+import type FPSController from './controller/fps-controller';
 import type SubtitleTrackController from './controller/subtitle-track-controller';
 import type {
   AbrComponentAPI,
@@ -40,12 +41,16 @@ import type BasePlaylistController from './controller/base-playlist-controller';
 import type BaseStreamController from './controller/base-stream-controller';
 import type ContentSteeringController from './controller/content-steering-controller';
 import type ErrorController from './controller/error-controller';
-import type FPSController from './controller/fps-controller';
+import type { FrameInfoForCertainLevel } from './controller/fps-controller';
+import { ExtendedSourceBuffer } from './types/buffer';
 
 /**
  * The `Hls` class is the core of the HLS.js library used to instantiate player instances.
  * @public
  */
+
+export { Level as HlsLevel } from './types/level';
+export { default as M3U8Parser } from './loader/m3u8-parser';
 export default class Hls implements HlsEventEmitter {
   private static defaultConfig: HlsConfig | undefined;
 
@@ -389,6 +394,27 @@ export default class Hls implements HlsEventEmitter {
     logger.log('detachMedia');
     this.trigger(Events.MEDIA_DETACHING, undefined);
     this._media = null;
+  }
+
+  /**
+   * Pause downloading segments.
+   * Ex: can be used while seeking
+   */
+  pauseDownloadingSegments() {
+    logger.log('pauseDownloadingSegments');
+    if (this.streamController) {
+      this.streamController.pauseDownloadingSegments();
+    }
+  }
+
+  /**
+   * resume downloading segments.
+   */
+  resumeDownloadingSegments() {
+    logger.log('resumeDownloadingSegments');
+    if (this.streamController) {
+      this.streamController.resumeDownloadingSegments();
+    }
   }
 
   /**
@@ -970,6 +996,75 @@ export default class Hls implements HlsEventEmitter {
   get forceStartLoad(): boolean {
     return this.streamController.forceStartLoad;
   }
+
+  get stallDuration(): number {
+    return this.streamController.stallDuration;
+  }
+
+  get frameInfoForCurrentLevel(): FrameInfoForCertainLevel | null {
+    const { fpsController: ConfigFpsController } = this.config;
+    const list = this.coreComponents.filter(
+      (item) => item instanceof ConfigFpsController
+    ) as FPSController[];
+    const fpsController = list[0];
+    if (!fpsController) {
+      return null;
+    }
+    return fpsController.getFrameInfoForCurrentLevel();
+  }
+
+  /**
+   * Is the transmuxer for the video stream making use of a web worker?
+   *
+   * Note this is different from whether `enableWorker` was set to true in
+   * config, as the web worker might fail to start or web workers might not
+   * be available in the user agent.
+   *
+   * @type {boolean}
+   */
+  get isUsingWebWorker(): boolean {
+    return !!this.streamController.isUsingWebWorker;
+  }
+
+  /**
+   * Returns the buffered property of a media source only if the media source is
+   * still attached
+   */
+  safeBufferedAccess(
+    // should be either
+    // this.bufferController.sourceBuffer.video
+    // this.bufferController.sourceBuffer.audio
+    sourceBuffer: ExtendedSourceBuffer
+  ): TimeRanges | undefined {
+    if (
+      this.bufferController?.mediaSource?.readyState === 'open' &&
+      sourceBuffer &&
+      Array.from(
+        this.bufferController?.mediaSource?.activeSourceBuffers || []
+      ).includes(sourceBuffer)
+    ) {
+      return sourceBuffer.buffered;
+    }
+    return undefined;
+  }
+
+  /**
+   * Safe access to the buffered property of the video stream controller
+   */
+  get videoBuffered(): TimeRanges | undefined {
+    const maybeVideoBuffer = this.bufferController.sourceBuffer.video
+    if (!maybeVideoBuffer) return undefined;
+    return this.safeBufferedAccess(maybeVideoBuffer);
+  }
+
+  /**
+   * Safe access to the buffered property of the audio stream controller
+   */
+  get audioBuffered(): TimeRanges | undefined {
+    const maybeAudioBuffer = this.bufferController.sourceBuffer.audio
+    if (!maybeAudioBuffer) return undefined;
+    return this.safeBufferedAccess(maybeAudioBuffer);
+  }
 }
 
 export type {
@@ -984,6 +1079,7 @@ export type {
   HlsListeners,
   HlsEventEmitter,
   HlsConfig,
+  FrameInfoForCertainLevel,
   BufferInfo,
   HdcpLevel,
   AbrController,

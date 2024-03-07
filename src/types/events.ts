@@ -39,6 +39,7 @@ export interface MediaAttachingData {
 
 export interface MediaAttachedData {
   media: HTMLMediaElement;
+  withSegmentsCache?: boolean;
   mediaSource?: MediaSource;
 }
 
@@ -58,6 +59,9 @@ export interface BufferAppendingData {
   chunkMeta: ChunkMetadata;
   parent: PlaylistLevelType;
   data: Uint8Array;
+  isInitSegment?: boolean;
+  isEndSegment?: boolean;
+  adIndex?: number;
 }
 
 export interface BufferAppendedData {

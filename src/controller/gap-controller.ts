@@ -24,6 +24,8 @@ export default class GapController {
   private stalled: number | null = null;
   private moved: boolean = false;
   private seeking: boolean = false;
+  private isNudging: boolean = false;
+  private stalledTimestamp: number | undefined = undefined;
 
   constructor(config, media, fragmentTracker, hls) {
     this.config = config;
@@ -74,6 +76,13 @@ export default class GapController {
         }
         this.stalled = null;
       }
+      if(!this.isNudging) {
+        this.stalledTimestamp = undefined;
+      }
+      // We should not reset the `isNudging` until we have checked the stalled timestamp to avoid the impact brought by the nudge.
+      if(!seeking) {
+        this.isNudging = false;
+      }
       return;
     }
 
@@ -95,9 +104,21 @@ export default class GapController {
     }
 
     const bufferInfo = BufferHelper.bufferInfo(media, currentTime, 0);
+    const isBuffered = bufferInfo.len > 0;
     const nextStart = bufferInfo.nextStart || 0;
 
+    if (!isBuffered && !nextStart) {
+      if(!seeking && !this.stalledTimestamp) {
+        logger.log('Set stall start time, waiting for buffer');
+        this.stalledTimestamp = self.performance.now();
+      }
+      return;
+    }
+
     if (seeking) {
+      if(!this.isNudging) {
+        this.stalledTimestamp = undefined;
+      }
       // Waiting for seeking in a buffered range to complete
       const hasEnoughBuffer = bufferInfo.len > MAX_START_GAP_JUMP;
       // Next buffered range is too far ahead to jump to while still seeking
@@ -146,13 +167,17 @@ export default class GapController {
 
     // Start tracking stall time
     const tnow = self.performance.now();
+    if(!this.stalledTimestamp) {
+      logger.log('Set stall start time, player gets stuck with buffer');
+      this.stalledTimestamp = tnow;
+    }
     if (stalled === null) {
       this.stalled = tnow;
       return;
     }
 
     const stalledDuration = tnow - stalled;
-    if (!seeking && stalledDuration >= STALL_MINIMUM_DURATION_MS) {
+    if (!seeking && stalledDuration >= (config.stallMinimumDurationMS || STALL_MINIMUM_DURATION_MS)) {
       // Report stalling after trying to fix
       this._reportStall(bufferInfo);
       if (!this.media) {
@@ -350,6 +375,7 @@ export default class GapController {
       );
       logger.warn(error.message);
       media.currentTime = targetTime;
+      this.isNudging = true;
       hls.trigger(Events.ERROR, {
         type: ErrorTypes.MEDIA_ERROR,
         details: ErrorDetails.BUFFER_NUDGE_ON_STALL,
@@ -368,5 +394,12 @@ export default class GapController {
         fatal: true,
       });
     }
+  }
+
+  get stallDuration() {
+    if(!this.stalledTimestamp) {
+      return 0;
+    }
+    return self.performance.now() - this.stalledTimestamp;
   }
 }

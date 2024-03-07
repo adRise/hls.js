@@ -163,6 +163,103 @@ describe('FragmentTracker', function () {
     });
   });
 
+  describe('deviated', function () {
+    const hls = new Hls({});
+    const mediaEl = document.createElement('video');
+    hls.attachMedia(mediaEl);
+    const fragmentTracker = new FragmentTracker(hls);
+
+    it('abnormal buffer should trigger DEVIATED_BUFFER_FLUSHING event', function () {
+      const frag = createMockFragment(
+        {
+          sn: 67,
+          level: 0,
+          type: PlaylistLevelType.AUDIO,
+          duration: 1.9969,
+          startPTS: 1284.017,
+          appendedPTS: 2000,
+          endPTS: 1286.01,
+        },
+        [ElementaryStreamTypes.AUDIO]
+      );
+      mediaEl.currentTime = 1285;
+      hls.trigger(
+        Events.BUFFER_APPENDED,
+        {
+          chunkMeta: new ChunkMetadata(0, 0, 0, 0),
+          frag,
+          part: null,
+          parent: PlaylistLevelType.MAIN,
+          type: 'audio',
+          timeRanges: {
+            video: createMockBuffer([
+              {
+                startPTS: 1523.52,
+                endPTS: 1530.27,
+              },
+            ]),
+            audio: createMockBuffer([
+              {
+                startPTS: 1284.02,
+                endPTS: 1286.01,
+              },
+              {
+                startPTS: 1524.02,
+                endPTS: 1535.99,
+              },
+            ]),
+          },
+        }
+      );
+      expect(frag.deviated).to.be.true;
+    });
+
+    it('normal buffer should not trigger DEVIATED_BUFFER_FLUSHING event', function () {
+      const frag = createMockFragment(
+        {
+          sn: 67,
+          level: 0,
+          type: PlaylistLevelType.AUDIO,
+          duration: 1.9969,
+          startPTS: 1284.017,
+          appendedPTS: 1286.01,
+          endPTS: 1286.01,
+        },
+        [ElementaryStreamTypes.AUDIO]
+      );
+      mediaEl.currentTime = 1285;
+      hls.trigger(
+        Events.BUFFER_APPENDED,
+        {
+          chunkMeta: new ChunkMetadata(0, 0, 0, 0),
+          frag,
+          part: null,
+          parent: PlaylistLevelType.MAIN,
+          type: 'audio',
+          timeRanges: {
+            video: createMockBuffer([
+              {
+                startPTS: 1523.52,
+                endPTS: 1530.27,
+              },
+            ]),
+            audio: createMockBuffer([
+              {
+                startPTS: 1284.02,
+                endPTS: 1286.01,
+              },
+              {
+                startPTS: 1524.02,
+                endPTS: 1535.99,
+              },
+            ]),
+          },
+        }
+      );
+      expect(frag.deviated).to.not.be.true;
+    });
+  });
+
   describe('getBufferedFrag', function () {
     let hls;
     let fragmentTracker: FragmentTracker;
@@ -648,6 +745,8 @@ type MockFragmentParams = {
   sn: number;
   level: number;
   type: PlaylistLevelType;
+  duration?: number;
+  appendedPTS?: number;
 };
 
 function createMockFragment(

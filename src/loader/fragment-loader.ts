@@ -14,8 +14,6 @@ import type {
   PartsLoadedData,
 } from '../types/events';
 
-const MIN_CHUNK_SIZE = Math.pow(2, 17); // 128kb
-
 export default class FragmentLoader {
   private readonly config: HlsConfig;
   private loader: Loader<FragmentLoaderContext> | null = null;
@@ -61,6 +59,9 @@ export default class FragmentLoader {
     this.abort();
 
     const config = this.config;
+    const isProgressive = config.progressive && ((!config.progressiveStartedUpSeekingEnable && !config.progressiveFastSpeedEnable) || !!onProgress);
+    const useDetachedFetchLoader = config.progressiveUseDetachedLoader && isProgressive;
+    const DetachedFetchLoader = config.progressiveLoader;
     const FragmentILoader = config.fLoader;
     const DefaultILoader = config.loader;
 
@@ -80,9 +81,11 @@ export default class FragmentLoader {
       const loader =
         (this.loader =
         frag.loader =
-          FragmentILoader
-            ? new FragmentILoader(config)
-            : (new DefaultILoader(config) as Loader<FragmentLoaderContext>));
+          useDetachedFetchLoader
+            ? (new DetachedFetchLoader(config) as Loader<FragmentLoaderContext>)
+            : FragmentILoader
+              ? new FragmentILoader(config)
+              : (new DefaultILoader(config) as Loader<FragmentLoaderContext>));
       const loaderContext = createLoaderContext(frag);
       const loadPolicy = getLoaderConfigWithoutReties(
         config.fragLoadPolicy.default,
@@ -92,8 +95,8 @@ export default class FragmentLoader {
         timeout: loadPolicy.maxLoadTimeMs,
         maxRetry: 0,
         retryDelay: 0,
-        maxRetryDelay: 0,
-        highWaterMark: frag.sn === 'initSegment' ? Infinity : MIN_CHUNK_SIZE,
+        maxRetryDelay: config.fragLoadingMaxRetryTimeout,
+        highWaterMark: frag.sn === 'initSegment' ? Infinity : config.fragLoadingMinChunkSize,
       };
       // Assign frag stats to the loader's stats reference
       frag.stats = loader.stats;
@@ -155,7 +158,7 @@ export default class FragmentLoader {
             }),
           );
         },
-        onProgress: (stats, context, data, networkDetails) => {
+        onProgress: isProgressive ? (stats, context, data, networkDetails) => {
           if (onProgress) {
             onProgress({
               frag,
@@ -164,7 +167,7 @@ export default class FragmentLoader {
               networkDetails,
             });
           }
-        },
+        } : undefined,
       });
     });
   }
@@ -204,8 +207,8 @@ export default class FragmentLoader {
         timeout: loadPolicy.maxLoadTimeMs,
         maxRetry: 0,
         retryDelay: 0,
-        maxRetryDelay: 0,
-        highWaterMark: MIN_CHUNK_SIZE,
+        maxRetryDelay: config.fragLoadingMaxRetryTimeout,
+        highWaterMark: config.fragLoadingMinChunkSize,
       };
       // Assign part stats to the loader's stats reference
       part.stats = loader.stats;

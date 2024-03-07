@@ -28,6 +28,8 @@ class MP4 {
     MP4.types = {
       avc1: [], // codingname
       avcC: [],
+      hvc1: [],
+      hvcC: [],
       btrt: [],
       dinf: [],
       dref: [],
@@ -736,6 +738,218 @@ class MP4 {
       ),
     );
   }
+  // https://github.com/Parrot-Developers/libmp4/blob/a6fb7aa995b39a6e6d258ff7161837f154914ed5/src/mp4_box_writer.c#L1076
+  static hvc1(track) {
+    // Raw nals with custom headers
+    let nals: number[] = [];
+
+    const add_nal = (nal_type: number, nal_list: Uint8Array[]) => {
+      // array_completeness of 1 and nal type
+      nals.push(0x80 | nal_type);
+      
+      // number of nals of this type
+      nals.push((nal_list.length >> 8) & 0xff);
+      nals.push(nal_list.length & 0xff);
+
+      for (const nal of nal_list) {
+        // 16-bit nal length
+        nals.push((nal.byteLength >> 8) & 0xff);
+        nals.push(nal.byteLength & 0xff);
+
+        // copy nal data
+        nals = nals.concat(Array.prototype.slice.call(nal));
+      }
+    };
+
+    add_nal(32, track.vps_nals);
+    add_nal(33, track.sps_nals);
+    add_nal(34, track.pps_nals);
+
+    const vps = track.vps_list[0];
+    const sps = track.sps_list[0];
+    const pps = track.pps_list[0];
+    const total_nals = track.vps_nals.length + track.sps_nals.length + track.pps_nals.length;
+
+    let parallelismType = 1;
+    if (pps.entropy_coding_sync_enabled_flag && pps.tiles_enabled_flag)
+        parallelismType = 0;
+    else if (pps.entropy_coding_sync_enabled_flag)
+        parallelismType = 3;
+    else if (pps.tiles_enabled_flag)
+        parallelismType = 2;
+
+    const constantFrameRate = 0;
+    const numTemporalLayers = Math.max(vps.max_sub_layers_minus1, sps.max_sub_layers_minus1);
+
+    // https://github.com/Parrot-Developers/libmp4/blob/a6fb7aa995b39a6e6d258ff7161837f154914ed5/src/mp4_box_writer.c#L713
+    const hvcc = MP4.box(
+      MP4.types.hvcC,
+      new Uint8Array(
+        [
+          0x01, // version
+          (sps.ptl.profile_space << 6) | (sps.ptl.tier_flag << 5) | sps.ptl.profile_idc,
+          
+          // 32 bits of profile_compatibility_flags
+          sps.ptl.profile_compatibility_flags >> 24,
+          (sps.ptl.profile_compatibility_flags >> 16) & 0xff,
+          (sps.ptl.profile_compatibility_flags >> 8) & 0xff,
+          sps.ptl.profile_compatibility_flags & 0xff,
+
+          // 48 bits of constraint_indicator_flags
+          (sps.ptl.constraint_indicator_flags_high_16 >> 8) & 0xff,
+          sps.ptl.constraint_indicator_flags_high_16 & 0xff,
+
+          sps.ptl.constraint_indicator_flags_low_32 >> 24,
+          (sps.ptl.constraint_indicator_flags_low_32 >> 16) & 0xff,
+          (sps.ptl.constraint_indicator_flags_low_32 >> 8) & 0xff,
+          sps.ptl.constraint_indicator_flags_low_32 & 0xff,
+
+          sps.ptl.level_idc,
+
+          // 16 bits of min_spatial_segmentation_idc
+          (sps.vui.min_spatial_segmentation_idc | 0xf000) >> 8,
+          0,
+
+          parallelismType | 0xfc,
+          sps.chroma_format | 0xfc,
+          sps.bit_depth_luma_minus8 | 0xf8,
+          sps.bit_depth_chroma_minus8 | 0xf8,
+
+          // 16-bits avg framerate
+          0,
+          0,
+          
+          (constantFrameRate << 6) |
+          (numTemporalLayers << 3) | 
+          (sps.temporal_id_nesting_flag << 2) |
+          3, // lengthSizeMinusOne
+
+          total_nals,
+        ]
+          .concat(nals)
+      )
+    );
+
+    const width = track.width;
+    const height = track.height;
+    const hSpacing = track.pixelRatio[0];
+    const vSpacing = track.pixelRatio[1];
+
+    return MP4.box(
+      MP4.types.hvc1,
+      new Uint8Array([
+        0x00,
+        0x00,
+        0x00, // reserved
+        0x00,
+        0x00,
+        0x00, // reserved
+        0x00,
+        0x01, // data_reference_index
+        0x00,
+        0x00, // pre_defined
+        0x00,
+        0x00, // reserved
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00, // pre_defined
+        (width >> 8) & 0xff,
+        width & 0xff, // width
+        (height >> 8) & 0xff,
+        height & 0xff, // height
+        0x00,
+        0x48,
+        0x00,
+        0x00, // horizresolution
+        0x00,
+        0x48,
+        0x00,
+        0x00, // vertresolution
+        0x00,
+        0x00,
+        0x00,
+        0x00, // reserved
+        0x00,
+        0x01, // frame_count
+        0x12,
+        0x64,
+        0x61,
+        0x69,
+        0x6c, // dailymotion/hls.js
+        0x79,
+        0x6d,
+        0x6f,
+        0x74,
+        0x69,
+        0x6f,
+        0x6e,
+        0x2f,
+        0x68,
+        0x6c,
+        0x73,
+        0x2e,
+        0x6a,
+        0x73,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00, // compressorname
+        0x00,
+        0x18, // depth = 24
+        0x11,
+        0x11,
+      ]), // pre_defined = -1
+      hvcc,
+      MP4.box(
+        MP4.types.btrt,
+        new Uint8Array([
+          0x00,
+          0x1c,
+          0x9c,
+          0x80, // bufferSizeDB
+          0x00,
+          0x2d,
+          0xc6,
+          0xc0, // maxBitrate
+          0x00,
+          0x2d,
+          0xc6,
+          0xc0,
+        ])
+      ), // avgBitrate
+      MP4.box(
+        MP4.types.pasp,
+        new Uint8Array([
+          hSpacing >> 24, // hSpacing
+          (hSpacing >> 16) & 0xff,
+          (hSpacing >> 8) & 0xff,
+          hSpacing & 0xff,
+          vSpacing >> 24, // vSpacing
+          (vSpacing >> 16) & 0xff,
+          (vSpacing >> 8) & 0xff,
+          vSpacing & 0xff,
+        ])
+      )
+    );
+  }
 
   static esds(track) {
     const configlen = track.config.length;
@@ -830,7 +1044,7 @@ class MP4 {
     );
   }
 
-  static stsd(track) {
+  static stsd(track): Uint8Array {
     if (track.type === 'audio') {
       if (track.segmentCodec === 'mp3' && track.codec === 'mp3') {
         return MP4.box(MP4.types.stsd, MP4.STSD, MP4.mp3(track));
@@ -839,9 +1053,13 @@ class MP4 {
         return MP4.box(MP4.types.stsd, MP4.STSD, MP4.ac3(track));
       }
       return MP4.box(MP4.types.stsd, MP4.STSD, MP4.mp4a(track));
-    } else {
+    } else if (track.codec.startsWith('avc1.')) {
       return MP4.box(MP4.types.stsd, MP4.STSD, MP4.avc1(track));
+    } else if (track.codec.startsWith('hvc1.')) {
+      return MP4.box(MP4.types.stsd, MP4.STSD, MP4.hvc1(track));
     }
+
+    throw new Error(`Unsupported codec detected: ${track.codec}`);
   }
 
   static tkhd(track) {

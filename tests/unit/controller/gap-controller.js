@@ -95,6 +95,7 @@ describe('GapController', function () {
       gapController._reportStall({ len: 42 });
       expect(triggerSpy).to.not.have.been.called;
     });
+
   });
 
   describe('_tryFixBufferStall', function () {
@@ -361,6 +362,22 @@ describe('GapController', function () {
       gapController.poll(0);
       gapController.poll(0);
       expect(mockMedia.currentTime).to.equal(0.9 + SKIP_BUFFER_RANGE_START);
+    });
+  });
+
+  describe('licenseRequestsInProgress', function () {
+    it('should track license request in progress without error', function () {
+      expect(gapController.licenseRequestInProgress()).to.equal(false);
+      gapController.hls.trigger(Events.EME_ON_KEY_SESSION_MESSAGE, { sessionId: '12345' });
+      expect(gapController.licenseRequestInProgress()).to.equal(true);
+      gapController.hls.trigger(Events.EME_SESSION_UPDATE, { sessionId: '12345' });
+      expect(gapController.licenseRequestInProgress()).to.equal(false);
+    });
+    it('should track license request in progress with error', function () {
+      expect(gapController.licenseRequestInProgress()).to.equal(false);
+      gapController.hls.trigger(Events.EME_ON_KEY_SESSION_MESSAGE, { sessionId: '12345' });
+      gapController.hls.trigger(Events.ERROR, { fatal: true, type: ErrorTypes.KEY_SYSTEM_ERROR });
+      expect(gapController.licenseRequestInProgress()).to.equal(false);
     });
   });
 });

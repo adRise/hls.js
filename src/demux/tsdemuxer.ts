@@ -21,6 +21,7 @@ import { ErrorTypes, ErrorDetails } from '../errors';
 import type { HlsConfig } from '../config';
 import type { HlsEventEmitter } from '../events';
 import {
+  DemuxedHevcTrack,
   DemuxedVideoTrack,
   DemuxedAudioTrack,
   DemuxedTrack,
@@ -32,8 +33,12 @@ import {
   ElementaryStreamData,
   KeyData,
   MetadataSchema,
+  HevcVPS,
+  HevcSPS,
+  HevcPPS,
 } from '../types/demuxer';
 import { AudioFrame } from '../types/demuxer';
+import HEVCVideoParser from './video/hevc-video-parser';
 
 export type ParsedTimestamp = {
   pts?: number;
@@ -64,17 +69,18 @@ class TSDemuxer implements Demuxer {
   private sampleAes: SampleAesDecrypter | null = null;
   private pmtParsed: boolean = false;
   private audioCodec?: string;
-  private videoCodec?: string;
   private _duration: number = 0;
   private _pmtId: number = -1;
 
-  private _videoTrack?: DemuxedVideoTrack;
+  private _hevcTrack?: DemuxedHevcTrack;
+  private _avcTrack?: DemuxedVideoTrack;
   private _audioTrack?: DemuxedAudioTrack;
   private _id3Track?: DemuxedMetadataTrack;
   private _txtTrack?: DemuxedUserdataTrack;
   private aacOverFlow: AudioFrame | null = null;
   private remainderData: Uint8Array | null = null;
-  private videoParser: AvcVideoParser;
+  private avcVideoParser: AvcVideoParser;
+  private hevcVideoParser: HEVCVideoParser;
 
   constructor(
     observer: HlsEventEmitter,
@@ -84,7 +90,8 @@ class TSDemuxer implements Demuxer {
     this.observer = observer;
     this.config = config;
     this.typeSupported = typeSupported;
-    this.videoParser = new AvcVideoParser();
+    this.avcVideoParser = new AvcVideoParser();
+    this.hevcVideoParser = new HEVCVideoParser();
   }
 
   static probe(data: Uint8Array) {
@@ -168,6 +175,20 @@ class TSDemuxer implements Demuxer {
     };
   }
 
+  static createHevcTrack(duration?: number): DemuxedHevcTrack {
+    return {
+      ...TSDemuxer.createTrack('video', duration),
+      vps_nals: [] as Uint8Array[],
+      sps_nals: [] as Uint8Array[],
+      pps_nals: [] as Uint8Array[],
+      sei_nals: [] as Uint8Array[],
+      vps_list: [] as HevcVPS[],
+      sps_list: [] as HevcSPS[],
+      pps_list: [] as HevcPPS[],
+      samples: [] as VideoSample[],
+    };
+  }
+
   /**
    * Initializes a new init segment on the demuxer/remuxer interface. Needed for discontinuities/track-switches (or at stream start)
    * Resets all internal track instances of the demuxer.
@@ -181,7 +202,13 @@ class TSDemuxer implements Demuxer {
     this.pmtParsed = false;
     this._pmtId = -1;
 
-    this._videoTrack = TSDemuxer.createTrack('video') as DemuxedVideoTrack;
+    this._avcTrack = TSDemuxer.createTrack(
+      'video',
+      trackDuration
+    ) as DemuxedVideoTrack;
+
+    this._hevcTrack = TSDemuxer.createHevcTrack(trackDuration);
+
     this._audioTrack = TSDemuxer.createTrack(
       'audio',
       trackDuration,
@@ -194,19 +221,21 @@ class TSDemuxer implements Demuxer {
     this.aacOverFlow = null;
     this.remainderData = null;
     this.audioCodec = audioCodec;
-    this.videoCodec = videoCodec;
     this._duration = trackDuration;
   }
 
   public resetTimeStamp() {}
 
   public resetContiguity(): void {
-    const { _audioTrack, _videoTrack, _id3Track } = this;
+    const { _audioTrack, _avcTrack, _hevcTrack, _id3Track } = this;
     if (_audioTrack) {
       _audioTrack.pesData = null;
     }
-    if (_videoTrack) {
-      _videoTrack.pesData = null;
+    if (_avcTrack) {
+      _avcTrack.pesData = null;
+    }
+    if (_hevcTrack) {
+      _hevcTrack.pesData = null;
     }
     if (_id3Track) {
       _id3Track.pesData = null;
@@ -227,13 +256,16 @@ class TSDemuxer implements Demuxer {
 
     let pes: PES | null;
 
-    const videoTrack = this._videoTrack as DemuxedVideoTrack;
+    const avcTrack = this._avcTrack as DemuxedHevcTrack;
+    const hevcTrack = this._hevcTrack as DemuxedHevcTrack;
     const audioTrack = this._audioTrack as DemuxedAudioTrack;
     const id3Track = this._id3Track as DemuxedMetadataTrack;
     const textTrack = this._txtTrack as DemuxedUserdataTrack;
 
-    let videoPid = videoTrack.pid;
-    let videoData = videoTrack.pesData;
+    let avcPid = avcTrack.pid;
+    let hevcPid = hevcTrack.pid;
+    let avcData = avcTrack.pesData;
+    let hevcData = hevcTrack.pesData;
     let audioPid = audioTrack.pid;
     let id3Pid = id3Track.pid;
     let audioData = audioTrack.pesData;
@@ -251,6 +283,8 @@ class TSDemuxer implements Demuxer {
 
     if (len < PACKET_LENGTH && !flush) {
       this.remainderData = data;
+      const videoTrack = hevcData?.size ? hevcTrack : avcTrack;
+
       return {
         audioTrack,
         videoTrack,
@@ -289,23 +323,30 @@ class TSDemuxer implements Demuxer {
           offset = start + 4;
         }
         switch (pid) {
-          case videoPid:
+          case avcPid:
             if (stt) {
-              if (videoData && (pes = parsePES(videoData))) {
-                this.videoParser.parseAVCPES(
-                  videoTrack,
-                  textTrack,
-                  pes,
-                  false,
-                  this._duration,
-                );
+              if (avcData && (pes = parsePES(avcData))) {
+                this.avcVideoParser.parseAVCPES(avcTrack, textTrack, pes, false, this._duration);
               }
 
-              videoData = { data: [], size: 0 };
+              avcData = { data: [], size: 0 };
             }
-            if (videoData) {
-              videoData.data.push(data.subarray(offset, start + PACKET_LENGTH));
-              videoData.size += start + PACKET_LENGTH - offset;
+            if (avcData) {
+              avcData.data.push(data.subarray(offset, start + PACKET_LENGTH));
+              avcData.size += start + PACKET_LENGTH - offset;
+            }
+            break;
+          case hevcPid:
+            if (stt) {
+              if (hevcData && (pes = parsePES(hevcData))) {
+                this.hevcVideoParser.parseHEVCPES(hevcTrack, textTrack, pes, false, this._duration);
+              }
+
+              hevcData = { data: [], size: 0 };
+            }
+            if (hevcData) {
+              hevcData.data.push(data.subarray(offset, start + 188));
+              hevcData.size += start + 188 - offset;
             }
             break;
           case audioPid:
@@ -371,10 +412,16 @@ class TSDemuxer implements Demuxer {
             // this could happen in case of transient missing audio samples for example
             // NOTE this is only the PID of the track as found in TS,
             // but we are not using this for MP4 track IDs.
-            videoPid = parsedPIDs.videoPid;
-            if (videoPid > 0) {
-              videoTrack.pid = videoPid;
-              videoTrack.segmentCodec = parsedPIDs.segmentVideoCodec;
+            avcPid = parsedPIDs.avcPid;
+            if (avcPid > 0) {
+              avcTrack.pid = avcPid;
+              avcTrack.segmentCodec = parsedPIDs.segmentVideoCodec;
+            }
+
+            hevcPid = parsedPIDs.hevcPid;
+            if (hevcPid > 0) {
+              hevcTrack.pid = hevcPid;
+              hevcTrack.segmentCodec = parsedPIDs.segmentVideoCodec;
             }
 
             audioPid = parsedPIDs.audioPid;
@@ -423,9 +470,12 @@ class TSDemuxer implements Demuxer {
       });
     }
 
-    videoTrack.pesData = videoData;
+    avcTrack.pesData = avcData;
+    hevcTrack.pesData = hevcData;
     audioTrack.pesData = audioData;
     id3Track.pesData = id3Data;
+
+    const videoTrack = hevcData ? hevcTrack : avcTrack;
 
     const demuxResult: DemuxerResult = {
       audioTrack,
@@ -448,8 +498,9 @@ class TSDemuxer implements Demuxer {
     if (remainderData) {
       result = this.demux(remainderData, -1, false, true);
     } else {
+      const videoTrack = this._hevcTrack?.pesData?.size ? this._hevcTrack : this._avcTrack;
       result = {
-        videoTrack: this._videoTrack as DemuxedVideoTrack,
+        videoTrack: videoTrack as DemuxedVideoTrack,
         audioTrack: this._audioTrack as DemuxedAudioTrack,
         id3Track: this._id3Track as DemuxedMetadataTrack,
         textTrack: this._txtTrack as DemuxedUserdataTrack,
@@ -470,16 +521,26 @@ class TSDemuxer implements Demuxer {
     // try to parse last PES packets
     let pes: PES | null;
     if (videoData && (pes = parsePES(videoData))) {
-      this.videoParser.parseAVCPES(
-        videoTrack as DemuxedVideoTrack,
-        textTrack as DemuxedUserdataTrack,
-        pes,
-        true,
-        this._duration,
-      );
+      if (this._hevcTrack?.pesData === videoData) {
+        this.hevcVideoParser.parseHEVCPES(
+          videoTrack as DemuxedHevcTrack,
+          textTrack as DemuxedUserdataTrack,
+          pes,
+          true,
+          this._duration,
+        );
+      } else {
+        this.avcVideoParser.parseAVCPES(
+          videoTrack as DemuxedHevcTrack,
+          textTrack as DemuxedUserdataTrack,
+          pes,
+          true,
+          this._duration,
+        );
+      }
       videoTrack.pesData = null;
     } else {
-      // either avcData null or PES truncated, keep it for next frag parsing
+      // either videoData null or PES truncated, keep it for next frag parsing
       videoTrack.pesData = videoData;
     }
 
@@ -720,8 +781,9 @@ class TSDemuxer implements Demuxer {
       logger.warn('[tsdemuxer]: ID3 PES unknown PTS');
       return;
     }
+    const videoTrack = this._hevcTrack?.pesData?.size ? this._hevcTrack : this._avcTrack;
     const id3Sample = Object.assign({}, pes as Required<PES>, {
-      type: this._videoTrack ? MetadataSchema.emsg : MetadataSchema.audioId3,
+      type: videoTrack ? MetadataSchema.emsg : MetadataSchema.audioId3,
       duration: Number.POSITIVE_INFINITY,
     });
     id3Track.samples.push(id3Sample);
@@ -746,7 +808,8 @@ function parsePMT(
 ) {
   const result = {
     audioPid: -1,
-    videoPid: -1,
+    avcPid: -1,
+    hevcPid: -1,
     id3Pid: -1,
     segmentVideoCodec: 'avc',
     segmentAudioCodec: 'aac',
@@ -794,8 +857,8 @@ function parsePMT(
       /* falls through */
       case 0x1b: // ITU-T Rec. H.264 and ISO/IEC 14496-10 (lower bit-rate video)
         // logger.log('AVC PID:'  + pid);
-        if (result.videoPid === -1) {
-          result.videoPid = pid;
+        if (result.avcPid === -1) {
+          result.avcPid = pid;
           result.segmentVideoCodec = 'avc';
         }
 
@@ -875,6 +938,10 @@ function parsePMT(
         logger.warn('Unsupported EC-3 in M2TS found');
         break;
       case 0x24:
+        // logger.log('HEVC stream type found');
+        if (result.hevcPid === -1) {
+          result.hevcPid = pid;
+        }
         logger.warn('Unsupported HEVC in M2TS found');
         break;
 

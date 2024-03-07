@@ -25,7 +25,7 @@ describe('FragmentLoader tests', function () {
 
   beforeEach(function () {
     fragmentLoader = new FragmentLoader(
-      mergeConfig(hlsDefaultConfig, { loader: MockXhr }),
+      mergeConfig(hlsDefaultConfig, { loader: MockXhr, progressive: true })
     );
     frag = new Fragment(PlaylistLevelType.MAIN, '');
     frag.url = 'foo';

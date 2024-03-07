@@ -914,7 +914,9 @@ class AudioStreamController
         chunkMeta,
         parent: frag.type,
         data: initSegment,
+        isInitSegment: true,
       };
+      this.log('audio stream controller BUFFER_APPENDING')
       this.hls.trigger(Events.BUFFER_APPENDING, segment);
     }
     // trigger handler right now

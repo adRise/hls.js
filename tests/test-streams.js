@@ -262,4 +262,14 @@ module.exports = {
        NAL units are not starting right at the beginning of the PES packet when using hardware accelerated decoding.`,
     abr: false,
   },
+  // TubiRedundantStreamPart1: {
+  //   url: 'https://run.mocky.io/v3/f268af4f-13aa-449f-8b28-34656abe2b35',
+  //   description: 'Tubi Redundant streams with part 1',
+  //   abr: true,
+  // },
+  // TubiRedundantStreamPart2: {
+  //   url: 'https://run.mocky.io/v3/016dfef5-d521-4eca-be55-25fe76f6e293',
+  //   description: 'Tubi Redundant streams with part 2',
+  //   abr: true,
+  // },
 };
